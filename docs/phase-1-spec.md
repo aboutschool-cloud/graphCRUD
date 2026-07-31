@@ -1,0 +1,89 @@
+# Phase 1 MVP specification
+
+## Purpose
+
+GraphCRUD is an evidence-first, static-analysis system for answering how Java code reaches database CRUD operations. The Phase 1 outcome is a customer-deployable MVP that can explain its results from a local source location through code, configuration, SQL, and database objects.
+
+## Scope
+
+- Inputs: a local source root; Git commit when available, otherwise a content snapshot hash. Optional offline SQL exports and migration directories are Schema Sources.
+- Java: Spring annotations and common XML Beans; Eclipse JDT is authoritative for Java syntax, types, and call resolution.
+- Persistence: native MyBatis XML and CRUD annotations; direct JDBC; `JdbcTemplate` and `NamedParameterJdbcTemplate` static SQL.
+- Database: PostgreSQL is fully implemented first, including static routine bodies and trigger chains. Oracle is the next dialect adapter; the core model already contains Packages and Routines.
+- Output: CLI, read-only versioned JSON API, structured progress events, local HTML/JSON reports, and a GraphStore-backed active snapshot.
+
+Out of scope for Phase 1: implementation of Python/JS/Shell scanners, full frontend scanning, runtime instrumentation, ORM/query-builder support, external-service traversal, multi-user hosting, and automatic source upload.
+
+## Evidence and graph model
+
+All adapters emit immutable intermediate facts. A resolver normalizes them into the graph; GraphStore only persists and queries the normalized graph.
+
+Key nodes: Analysis Project, Module, Source File, Code Symbol, Configuration Document, Configuration Entry, Invocation Source, Invocation Binding, HTTP Endpoint Binding, UI Action, Database Source, Schema, Table, View, Trigger, Database Package, Database Routine, SQL Statement, Integration Channel, Message/File Contract, External System, and Review Annotation.
+
+Key relationships include `CALLS`, `READS`, `INSERTS`, `UPDATES`, `DELETES`, `EXECUTES`, `DECLARES`, `ROUTES_TO`, `TRIGGERS`, `CONTAINS`, and binding relationships. Every fact has source location, adapter, snapshot, and evidence level:
+
+- `confirmed`: unique and statically traceable;
+- `possible`: bounded alternatives or profile-specific path;
+- `unresolved`: runtime-dependent or unsupported structure, retained with its reason.
+
+Default queries use only `confirmed` evidence. Query results always return their snapshot ID and evidence path.
+
+## Entrypoints and configuration
+
+An entry is modeled generically as `Invocation Source → Invocation Binding → Java Method`.
+
+- Implemented sources: Spring HTTP mappings, old URL-to-class/method configuration, `@Scheduled`, `main`, and manually supplied UI Actions.
+- HTTP endpoints preserve raw route plus route shape. `ANY` represents a legacy binding with no method restriction.
+- Configuration is first-class: only semantically meaningful XML/YAML/properties entries become nodes. Class-only references resolve to types, not guessed methods.
+- JSP and JS/TS adapters are future sources of UI Actions. Shell scripts and other languages can join the same model later.
+
+## SQL, schema, and database behavior
+
+The rule is static recoverability, not whether SQL is called dynamic. Constant Java strings, text blocks, constants, and deterministic concatenation produce confirmed facts. MyBatis conditional branches produce possible facts. Runtime-dependent identifiers or fragments remain unresolved.
+
+Complex SQL is decomposed into reads and writes: `INSERT … SELECT`, `UPDATE … FROM`, `DELETE … USING`, `MERGE`, CTEs, and Views. Static PostgreSQL functions/procedures and triggers extend the chain to their table CRUD; dynamic `EXECUTE` is parsed when reducible to a static statement and otherwise unresolved.
+
+Tables are identified by Database Source, schema, and dialect-normalized name; original identifier spelling is preserved. Unquoted PostgreSQL and Oracle names normalize according to their dialect, while quoted names remain case-sensitive. DataSources are recovered from configuration and injection; dynamic routing yields possible candidates.
+
+Schema Sources are statically replayed with explicit target environment and priority. Flyway-style migrations are preferred. Conflicting sources never overwrite silently.
+
+## Snapshot, query, and runtime rules
+
+- New analysis writes a staging snapshot. Only successful completion and validation atomically changes `activeSnapshotId`; old snapshots remain available to in-flight queries and are later cleaned up.
+- A partial snapshot is allowed for per-file, dependency, or dynamic-analysis failures, and visibly reports coverage. Input/backend/manifest failures are fatal and do not switch snapshots.
+- `table-impact` returns direct CRUD plus reverse static paths. Default maximum depth is 12 and maximum returned paths is 100; truncation is explicit.
+- One scan runs per project; jobs for different projects can run under a global concurrency limit.
+- Parsing may be parallel but normalized facts are stably ordered for deterministic results.
+
+## Security and customer deployment
+
+The MVP runs entirely inside the customer environment: native Linux x86_64 or WSL2. Docker Compose is the preferred offline delivery; a JVM distribution that connects to customer-provided Neo4j is the alternative. Source roots are read-only; source, graph, report, and telemetry never leave the customer by default.
+
+The scanner does not execute Maven/Gradle scripts, does not connect to production databases, and does not copy full source/configuration into Neo4j. It uses non-executing metadata reads, local schema exports, source locations, hashes, and redacted values. It follows only in-root files by default and has built-in exclusions plus `.graphcrudignore`.
+
+Reports, logs, and support bundles are local and redacted. A support bundle is customer-created and contains only approved metadata, hashes, errors, and statistics. Project data lives in a configurable directory and `purge-project` removes graph and run metadata without changing the source root.
+
+## Graph storage and licensing
+
+GraphStore is a capability-based interface. It requires batch writes, stable lookup, bounded path traversal, snapshot switching, and transactional behavior. Neo4j is the first adapter, but any backend must pass the same golden graph and query contract. Canonical facts are exportable as JSONL.
+
+Neo4j Community is GPLv3 and must not be assumed as a bundled commercial customer component without legal approval. A customer may use an approved existing graph backend or a separately licensed product; unsupported backends are rejected by capability checks instead of silently returning incomplete answers.
+
+## Evaluation and customer validation
+
+The repository contains a hand-authored golden fixture and two truth sources: `expected-graph.json` and `expected-queries.json`. They cover Spring and legacy bindings, UI Actions, JDBC/MyBatis, static and non-static SQL, complex SQL, schema migration, triggers/routines, and polymorphism/cycles. Confirmed facts must match exactly.
+
+Open-source projects are layered regression corpus, not truth: official MyBatis projects validate compatibility, RuoYi-Vue-Plus is a PostgreSQL-scale smoke corpus, and MyBatis-Plus is a Gradle sentinel. Every corpus run is pinned to immutable commit SHA and records JDK, commands, analyzer version, and result hash.
+
+Customer validation uses reproducible stratified random sampling across adapter, CRUD operation, evidence level, module, and entrypoint. Reviewers create Review Annotations of correct, incorrect, or unknown; annotations do not overwrite derived facts.
+
+Performance establishes fixed-environment baselines for discovery, parsing, resolution, graph write, and query. A regression greater than 20% in a stage fails after a baseline has been accepted.
+
+## Delivery order
+
+1. Golden fixture, canonical facts, and in-memory query assertions.
+2. JDT, entrypoint model, Spring bindings, and JDBC.
+3. MyBatis, JSqlParser, PostgreSQL schema/routine/trigger analysis.
+4. GraphStore/Neo4j snapshot adapter and API/CLI/progress.
+5. Evaluation, reports, offline packaging, and customer review flow.
+6. Legacy XML/JSP depth, Oracle, additional GraphStore adapters, JS/TS, and integration adapters for HTTP, electronic messages, and HULFT.
