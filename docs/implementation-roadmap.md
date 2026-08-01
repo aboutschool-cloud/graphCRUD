@@ -28,6 +28,35 @@ Deliverable: a deterministic `table-impact` result produced entirely from canoni
 
 Gate: positive and negative assertions pass, repeated runs have identical hashes, and partial snapshot promotion behavior is covered before any parser or Neo4j code exists.
 
+### Stage 1 public interface and seams
+
+Stage 1 exposes two seams:
+
+- The `model` interface owns immutable canonical facts. `NodeId` is composed only
+  from a node kind and logical identity parts; snapshot, source location, evidence,
+  commit, and display spelling cannot enter it. A `RelationshipAssertion` is composed
+  from source, relationship type, target, and semantic qualifiers. Each
+  `EvidenceOccurrence` separately records its supported canonical node or Relationship
+  Assertion, snapshot, adapter, source anchor, evidence level, and explanation.
+- The `application` interface owns the `GraphStore` capability contract. It accepts
+  batches of already-normalized facts, seals snapshots, explicitly promotes partial
+  snapshots, reports the Active Snapshot, exports portable JSONL, and answers bounded
+  `table-impact` queries. Required capabilities are batch write, stable lookup,
+  bounded traversal, snapshot switching, and transactional promotion. Adapter names,
+  storage query languages, and backend transaction types are not part of the interface.
+
+Complete snapshots become active when sealed. Partial snapshots become immutable and
+queryable when sealed but preserve the previous Active Snapshot until explicitly
+promoted. Queries use confirmed Evidence Occurrences by default and return their
+snapshot and evidence paths. Portable JSONL orders facts by kind and canonical
+identity, orders object keys, uses UTF-8, and ends every record with one line feed, so
+input iteration order cannot change its bytes or hash.
+
+Contract tests use only these seams: model value construction and the `GraphStore`
+interface with an in-memory adapter and hand-authored facts. Snapshot state containers,
+indexes, traversal machinery, and JSON encoding helpers remain internal seams. No
+parser-facing or storage-product-specific concept belongs in Stage 1.
+
 Recommended conversation:
 
 > Use `tdd` to implement Stage 1 of `docs/implementation-roadmap.md`. Start with failing contract tests for canonical identity, Evidence Occurrences, snapshot promotion, deterministic JSONL, and one end-to-end in-memory `table-impact` fixture. Stop when the Stage 1 gate passes.

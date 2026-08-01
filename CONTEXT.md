@@ -29,7 +29,7 @@ A canonical semantic relationship between two graph nodes that may be supported 
 _Avoid_: source occurrence, duplicated edge
 
 **Evidence Occurrence**:
-One snapshot-specific, source-located observation supporting a Relationship Assertion, with its adapter, evidence level, and explanation.
+One snapshot-specific, source-located observation supporting a canonical node or Relationship Assertion, with its adapter, evidence level, and explanation.
 _Avoid_: relationship, confidence score
 
 **Configuration Entry**:
