@@ -69,6 +69,32 @@ Deliverable: real Java source reaches SQL Statements through confirmed or explic
 
 Gate: minimal fixtures cover HTTP, filter, scheduled, startup, event listener, message consumer configuration, direct JDBC, dependency loss, polymorphism, and cycles.
 
+### Stage 2 Java discovery seam
+
+The `application` interface owns a JDT-neutral `JavaSourceAnalyzer` input seam. One
+`JavaAnalysisInput` identifies the Analysis Project root and snapshot and carries
+explicit `JavaBuildMetadata`: module name, encoded source roots, resolved binary
+classpath entries, and an explicit Java runtime policy. The analyzer returns immutable
+canonical facts plus a JDT-neutral snapshot completion classification. Callers do not
+learn about AST nodes, bindings, compiler problems, filesystem traversal, or ignore
+matching. Unresolved adapter evidence produces a `PARTIAL` result so later orchestration
+can seal it without promoting it automatically.
+
+The Eclipse JDT adapter lives in `infrastructure`. It canonicalizes and validates
+every source path against the Analysis Project root before reading it, applies built-in
+exclusions and `.graphcrudignore`, configures a fixed Java 21 parser environment, and
+emits source-located Evidence Occurrences separately from Source File and Code Symbol
+identity. Contract tests cross only the `JavaSourceAnalyzer` seam with temporary local
+fixtures. They never invoke or mock Maven, Gradle, JDT internals, or filesystem walkers.
+
+The same interface returns JDT-bound direct-call facts without exposing bindings:
+one unique non-recovered Java target emits a confirmed `CALLS` assertion, while an
+allowlisted direct JDBC invocation with a statically recovered SQL literal emits a
+first-class SQL Statement and confirmed `EXECUTES` assertion. SQL Statement identity
+uses its owning method, static SQL, and deterministic JDBC invocation ordinal; source
+location remains in separate Evidence Occurrences. This stage does not derive table
+CRUD from SQL text.
+
 Recommended conversation:
 
 > Use `tdd` to implement the next Stage 2 vertical slice: [name one fixture]. Treat Eclipse JDT as the semantic authority, preserve unresolved reasons, and run all prior fixtures before stopping.

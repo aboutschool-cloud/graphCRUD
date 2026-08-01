@@ -20,6 +20,10 @@ _Avoid_: repository federation, remote source upload
 An evidenced mapping from an invocation source, such as an HTTP route, UI action, scheduled task, or configuration entry, to a code symbol.
 _Avoid_: assumed entrypoint, guessed framework dispatch
 
+**HTTP Endpoint Binding**:
+An Invocation Binding specialized for HTTP that preserves the HTTP method, raw route, and normalized route shape while resolving to a code symbol.
+_Avoid_: route string, controller method
+
 **Code Entrypoint**:
 A code method invoked by a framework or runtime through an evidenced Invocation Binding. The concept is broad, while each delivery explicitly declares which invocation-source adapters it supports.
 _Avoid_: public method, controller method, externally callable method
