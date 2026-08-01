@@ -27,7 +27,17 @@ public interface GraphStore {
 
     Optional<SnapshotCompletion> sealedSnapshotCompletion(SnapshotId snapshotId);
 
+    Optional<ProjectId> snapshotProject(SnapshotId snapshotId);
+
+    Optional<SnapshotStatus> snapshotStatus(SnapshotId snapshotId);
+
+    Coverage snapshotCoverage(SnapshotId snapshotId);
+
+    Coverage tableImpactCoverage(SnapshotId snapshotId, NodeId tableId, TableImpactResult result);
+
     int cleanupSnapshots(ProjectId projectId, int retainNewest);
+
+    int purgeProject(ProjectId projectId);
 
     Optional<SnapshotId> activeSnapshot(ProjectId projectId);
 

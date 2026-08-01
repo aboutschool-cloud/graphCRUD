@@ -36,6 +36,7 @@ abstract class GraphStoreSharedContract {
         store.sealSnapshot(snapshot, SnapshotCompletion.COMPLETE);
 
         assertEquals(snapshot, store.activeSnapshot(project).orElseThrow());
+        assertEquals(project, store.snapshotProject(snapshot).orElseThrow());
         try (var lease = store.retainActiveSnapshot(project)) {
             assertEquals(snapshot, lease.snapshotId());
             assertThrows(IllegalStateException.class, () -> store.deleteSnapshot(snapshot));
@@ -47,6 +48,19 @@ abstract class GraphStoreSharedContract {
     }
 
     @Test
+    void staging_snapshot_has_explicit_portable_status() {
+        var store = store();
+        var project = new ProjectId("staging-project");
+        var snapshot = new SnapshotId("staging-snapshot");
+        store.beginSnapshot(project, snapshot);
+        assertEquals(project, store.snapshotProject(snapshot).orElseThrow());
+        assertEquals(io.graphcrud.application.SnapshotStatus.STAGING, store.snapshotStatus(snapshot).orElseThrow());
+        assertTrue(store.sealedSnapshotCompletion(snapshot).isEmpty());
+        store.discardSnapshot(snapshot);
+        assertTrue(store.snapshotStatus(snapshot).isEmpty());
+    }
+
+    @Test
     void partial_snapshot_requires_explicit_promotion() {
         var store = store();
         var project = new ProjectId("orders");
@@ -55,6 +69,7 @@ abstract class GraphStoreSharedContract {
         assertEquals(complete, store.activeSnapshot(project).orElseThrow());
         store.promotePartial(partial);
         assertEquals(partial, store.activeSnapshot(project).orElseThrow());
+        assertThrows(IllegalStateException.class, () -> store.promotePartial(partial));
     }
 
     @Test
@@ -117,6 +132,23 @@ abstract class GraphStoreSharedContract {
     }
 
     @Test
+    void purge_removes_only_the_selected_project_and_refuses_retained_reads() {
+        var store = store();
+        var orders = new ProjectId("orders-purge");
+        var billing = new ProjectId("billing-purge");
+        var first = seal(store, orders, "orders-first", SnapshotCompletion.COMPLETE);
+        seal(store, orders, "orders-partial", SnapshotCompletion.PARTIAL);
+        var other = seal(store, billing, "billing-active", SnapshotCompletion.COMPLETE);
+        try (var ignored = store.retainSnapshot(first)) {
+            assertThrows(IllegalStateException.class, () -> store.purgeProject(orders));
+        }
+        assertEquals(2, store.purgeProject(orders));
+        assertTrue(store.activeSnapshot(orders).isEmpty());
+        assertThrows(IllegalStateException.class, () -> store.exportJsonl(first));
+        assertEquals(other, store.activeSnapshot(billing).orElseThrow());
+    }
+
+    @Test
     void canonical_relationships_and_evidence_produce_the_same_bounded_impact() {
         var store = store();
         var snapshot = new SnapshotId("impact");
@@ -135,6 +167,42 @@ abstract class GraphStoreSharedContract {
         assertEquals(1, result.paths().size());
         assertEquals(List.of(method, table), result.paths().getFirst().nodes());
         assertEquals(List.of(evidence.id()), result.paths().getFirst().evidenceOccurrenceIds());
+    }
+
+    @Test
+    void partial_coverage_reports_sorted_degraded_source_regions_and_reasons() {
+        var store = store();
+        var project = new ProjectId("coverage-project");
+        var snapshot = new SnapshotId("coverage-snapshot");
+        var table = table("coverage-table");
+        var evidence = EvidenceOccurrence.of(table.id(), snapshot, "fixture",
+                new SourceAnchor("src/Orders.java", 8, 2), EvidenceLevel.UNRESOLVED, "missing dependency");
+        store.beginSnapshot(project, snapshot);
+        store.writeFacts(snapshot, List.of(table, evidence));
+        store.sealSnapshot(snapshot, SnapshotCompletion.PARTIAL);
+        var coverage = store.snapshotCoverage(snapshot);
+        assertEquals(List.of("src/Orders.java"), coverage.affectedRegions());
+        assertEquals(List.of("missing dependency"), coverage.reasons());
+    }
+
+    @Test
+    void impact_coverage_includes_only_degraded_evidence_relevant_to_the_table() {
+        var store = store();
+        var project = new ProjectId("query-coverage-project");
+        var snapshot = new SnapshotId("query-coverage-snapshot");
+        var target = table("target");
+        var unrelated = table("unrelated");
+        var relevantEvidence = EvidenceOccurrence.of(target.id(), snapshot, "fixture",
+                new SourceAnchor("Target.java", 1, 1), EvidenceLevel.UNRESOLVED, "target unresolved");
+        var unrelatedEvidence = EvidenceOccurrence.of(unrelated.id(), snapshot, "fixture",
+                new SourceAnchor("Other.java", 1, 1), EvidenceLevel.UNRESOLVED, "other unresolved");
+        store.beginSnapshot(project, snapshot);
+        store.writeFacts(snapshot, List.of(target, unrelated, relevantEvidence, unrelatedEvidence));
+        store.sealSnapshot(snapshot, SnapshotCompletion.PARTIAL);
+        var result = store.tableImpact(snapshot, target.id(), io.graphcrud.application.QueryBounds.defaults());
+        var coverage = store.tableImpactCoverage(snapshot, target.id(), result);
+        assertEquals(List.of("Target.java"), coverage.affectedRegions());
+        assertEquals(List.of("target unresolved"), coverage.reasons());
     }
 
     private static SnapshotId seal(GraphStore store, ProjectId project, String value, SnapshotCompletion completion) {

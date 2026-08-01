@@ -125,7 +125,12 @@ class DefaultAnalysisJobRunnerContractTest {
         @Override public SnapshotLease retainSnapshot(SnapshotId id) { throw new UnsupportedOperationException(); }
         @Override public SnapshotLease retainActiveSnapshot(ProjectId id) { throw new UnsupportedOperationException(); }
         @Override public Optional<SnapshotCompletion> sealedSnapshotCompletion(SnapshotId id) { if (failReconciliation) throw new IllegalStateException("backend unavailable"); return Optional.ofNullable(sealed); }
+        @Override public Optional<ProjectId> snapshotProject(SnapshotId id) { return Optional.empty(); }
+        @Override public Optional<SnapshotStatus> snapshotStatus(SnapshotId id) { return Optional.empty(); }
+        @Override public Coverage snapshotCoverage(SnapshotId id) { return Coverage.forCompletion(sealed == null ? SnapshotCompletion.PARTIAL : sealed); }
+        @Override public Coverage tableImpactCoverage(SnapshotId id, NodeId tableId, TableImpactResult result) { return snapshotCoverage(id); }
         @Override public int cleanupSnapshots(ProjectId id, int retainNewest) { return 0; }
+        @Override public int purgeProject(ProjectId id) { return 0; }
         @Override public Optional<SnapshotId> activeSnapshot(ProjectId id) { return Optional.empty(); }
         @Override public byte[] exportJsonl(SnapshotId id) { throw new UnsupportedOperationException(); }
         @Override public Optional<io.graphcrud.model.CanonicalFact> findFact(SnapshotId id, String kind, String canonicalId) { return Optional.empty(); }

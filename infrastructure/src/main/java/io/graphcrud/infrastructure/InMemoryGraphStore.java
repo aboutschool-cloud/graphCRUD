@@ -7,6 +7,7 @@ import io.graphcrud.application.QueryBounds;
 import io.graphcrud.application.SnapshotCompletion;
 import io.graphcrud.application.SnapshotLease;
 import io.graphcrud.application.TableImpactResult;
+import io.graphcrud.application.Coverage;
 import io.graphcrud.model.CanonicalFact;
 import io.graphcrud.model.NodeId;
 import io.graphcrud.model.SnapshotId;
@@ -84,6 +85,9 @@ public final class InMemoryGraphStore implements GraphStore {
         if (projectId == null) {
             throw new IllegalStateException("snapshot is not a sealed partial snapshot: " + snapshotId.value());
         }
+        if (snapshotId.equals(activeSnapshots.get(projectId))) {
+            throw new IllegalStateException("snapshot is already active: " + snapshotId.value());
+        }
         activeSnapshots.put(projectId, snapshotId);
     }
 
@@ -147,6 +151,35 @@ public final class InMemoryGraphStore implements GraphStore {
         return Optional.ofNullable(snapshotCompletions.get(snapshotId));
     }
 
+    @Override public synchronized Optional<ProjectId> snapshotProject(SnapshotId snapshotId) {
+        return Optional.ofNullable(snapshotProjects.get(snapshotId));
+    }
+    @Override public synchronized Optional<io.graphcrud.application.SnapshotStatus> snapshotStatus(SnapshotId id) {
+        if (stagingSnapshots.containsKey(id)) return Optional.of(io.graphcrud.application.SnapshotStatus.STAGING);
+        var completion = snapshotCompletions.get(id);
+        return completion == null ? Optional.empty() : Optional.of(completion == SnapshotCompletion.COMPLETE
+                ? io.graphcrud.application.SnapshotStatus.COMPLETE : io.graphcrud.application.SnapshotStatus.PARTIAL);
+    }
+
+    @Override public synchronized Coverage snapshotCoverage(SnapshotId snapshotId) {
+        requireSealed(snapshotId);
+        return coverage(snapshotId, factsBySnapshot.get(snapshotId));
+    }
+    @Override public synchronized Coverage tableImpactCoverage(SnapshotId snapshotId, NodeId tableId, TableImpactResult result) {
+        requireSealed(snapshotId); return QueryCoverage.execute(snapshotCompletions.get(snapshotId), factsBySnapshot.get(snapshotId), tableId, result);
+    }
+
+    private Coverage coverage(SnapshotId snapshotId, List<CanonicalFact> facts) {
+        if (snapshotCompletions.get(snapshotId) == SnapshotCompletion.COMPLETE) return Coverage.forCompletion(SnapshotCompletion.COMPLETE);
+        var degraded = facts.stream().filter(io.graphcrud.model.EvidenceOccurrence.class::isInstance)
+                .map(io.graphcrud.model.EvidenceOccurrence.class::cast)
+                .filter(e -> e.evidenceLevel() != io.graphcrud.model.EvidenceLevel.CONFIRMED).toList();
+        var regions = degraded.stream().map(e -> e.sourceAnchor().path()).distinct().sorted().toList();
+        var reasons = degraded.stream().map(io.graphcrud.model.EvidenceOccurrence::explanation).distinct().sorted().toList();
+        return new Coverage(false, regions.isEmpty() ? List.of("snapshot") : regions,
+                reasons.isEmpty() ? List.of("Analysis completed with unresolved or possible evidence.") : reasons);
+    }
+
     @Override
     public synchronized int cleanupSnapshots(ProjectId projectId, int retainNewest) {
         if (retainNewest < 0) throw new IllegalArgumentException("retainNewest must not be negative");
@@ -159,6 +192,22 @@ public final class InMemoryGraphStore implements GraphStore {
             try { deleteSnapshot(snapshotId); deleted++; } catch (IllegalStateException protectedSnapshot) { /* retained */ }
         }
         return deleted;
+    }
+
+    @Override
+    public synchronized int purgeProject(ProjectId projectId) {
+        var snapshots = snapshotProjects.entrySet().stream()
+                .filter(entry -> projectId.equals(entry.getValue())).map(Map.Entry::getKey).toList();
+        if (snapshots.stream().anyMatch(id -> retainedSnapshots.getOrDefault(id, 0) > 0)) {
+            throw new IllegalStateException("project has retained snapshots: " + projectId.value());
+        }
+        activeSnapshots.remove(projectId);
+        for (var id : snapshots) {
+            stagingSnapshots.remove(id); partialSnapshots.remove(id); sealedSnapshots.remove(id);
+            snapshotCompletions.remove(id); snapshotProjects.remove(id); sealSequences.remove(id);
+            factsBySnapshot.remove(id); retainedSnapshots.remove(id);
+        }
+        return snapshots.size();
     }
 
     @Override

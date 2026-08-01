@@ -13,7 +13,13 @@ public final class DefaultAnalysisJobRunner implements AnalysisJobRunner {
 
     @Override
     public AnalysisJobResult run(AnalysisJobRequest request, CancellationToken cancellationToken) {
-        var progress = new ArrayList<AnalysisProgress>();
+        return run(request, cancellationToken, ignored -> {});
+    }
+
+    @Override
+    public AnalysisJobResult run(AnalysisJobRequest request, CancellationToken cancellationToken,
+                                 java.util.function.Consumer<AnalysisProgress> listener) {
+        var progress = new ProgressEvents(listener);
         progress.add(new AnalysisProgress(AnalysisJobState.QUEUED, 0, "Analysis job queued."));
         boolean staging = false;
         boolean sealing = false;
@@ -85,6 +91,12 @@ public final class DefaultAnalysisJobRunner implements AnalysisJobRunner {
                     "Analysis job failed: " + failure.getClass().getSimpleName()));
             return new AnalysisJobResult(AnalysisJobState.FAILED, progress);
         }
+    }
+
+    private static final class ProgressEvents extends ArrayList<AnalysisProgress> {
+        private final java.util.function.Consumer<AnalysisProgress> listener;
+        private ProgressEvents(java.util.function.Consumer<AnalysisProgress> listener) { this.listener = listener; }
+        @Override public boolean add(AnalysisProgress progress) { listener.accept(progress); return super.add(progress); }
     }
 
     private AnalysisJobResult cancelBeforeStaging(ArrayList<AnalysisProgress> progress) {

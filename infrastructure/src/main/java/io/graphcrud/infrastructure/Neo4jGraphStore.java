@@ -7,6 +7,7 @@ import io.graphcrud.application.QueryBounds;
 import io.graphcrud.application.SnapshotCompletion;
 import io.graphcrud.application.SnapshotLease;
 import io.graphcrud.application.TableImpactResult;
+import io.graphcrud.application.Coverage;
 import io.graphcrud.model.CanonicalFact;
 import io.graphcrud.model.NodeId;
 import io.graphcrud.model.SnapshotId;
@@ -105,9 +106,11 @@ public final class Neo4jGraphStore implements GraphStore {
         try (var session = driver.session()) {
             int changed = session.executeWrite(tx -> tx.run(
                             "MATCH (s:GraphCrudSnapshot {id:$id, state:'SEALED', completion:'PARTIAL'}) "
-                                    + "MERGE (p:GraphCrudProject {id:s.projectId}) SET p.activeSnapshot=s.id RETURN count(p) AS changed",
+                                    + "MERGE (p:GraphCrudProject {id:s.projectId}) WITH s,p "
+                                    + "WHERE p.activeSnapshot IS NULL OR p.activeSnapshot <> s.id "
+                                    + "SET p.activeSnapshot=s.id RETURN count(p) AS changed",
                             Values.parameters("id", snapshotId.value())).single().get("changed").asInt());
-            if (changed != 1) throw new IllegalStateException("snapshot is not a sealed partial snapshot: " + snapshotId.value());
+            if (changed != 1) throw new IllegalStateException("snapshot is not promotable or is already active: " + snapshotId.value());
         }
     }
 
@@ -164,6 +167,37 @@ public final class Neo4jGraphStore implements GraphStore {
         }
     }
 
+    @Override public Optional<ProjectId> snapshotProject(SnapshotId snapshotId) {
+        try (var session = driver.session()) {
+            return session.executeRead(tx -> tx.run("MATCH (s:GraphCrudSnapshot {id:$id}) RETURN s.projectId AS project",
+                            Values.parameters("id", snapshotId.value())).stream()
+                    .map(record -> new ProjectId(record.get("project").asString())).findFirst());
+        }
+    }
+    @Override public Optional<io.graphcrud.application.SnapshotStatus> snapshotStatus(SnapshotId id) {
+        try (var session = driver.session()) {
+            return session.executeRead(tx -> tx.run("MATCH (s:GraphCrudSnapshot {id:$id}) RETURN s.state AS state, s.completion AS completion",
+                            Values.parameters("id", id.value())).stream().map(record -> record.get("state").asString().equals("STAGING")
+                    ? io.graphcrud.application.SnapshotStatus.STAGING
+                    : io.graphcrud.application.SnapshotStatus.valueOf(record.get("completion").asString())).findFirst());
+        }
+    }
+
+    @Override public Coverage snapshotCoverage(SnapshotId snapshotId) {
+        var completion = completion(snapshotId);
+        if (completion == SnapshotCompletion.COMPLETE) return Coverage.forCompletion(completion);
+        var degraded = readFacts(snapshotId).stream().filter(io.graphcrud.model.EvidenceOccurrence.class::isInstance)
+                .map(io.graphcrud.model.EvidenceOccurrence.class::cast)
+                .filter(e -> e.evidenceLevel() != io.graphcrud.model.EvidenceLevel.CONFIRMED).toList();
+        var regions = degraded.stream().map(e -> e.sourceAnchor().path()).distinct().sorted().toList();
+        var reasons = degraded.stream().map(io.graphcrud.model.EvidenceOccurrence::explanation).distinct().sorted().toList();
+        return new Coverage(false, regions.isEmpty() ? List.of("snapshot") : regions,
+                reasons.isEmpty() ? List.of("Analysis completed with unresolved or possible evidence.") : reasons);
+    }
+    @Override public Coverage tableImpactCoverage(SnapshotId snapshotId, NodeId tableId, TableImpactResult result) {
+        return QueryCoverage.execute(completion(snapshotId), readFacts(snapshotId), tableId, result);
+    }
+
     @Override
     public int cleanupSnapshots(ProjectId projectId, int retainNewest) {
         if (retainNewest < 0) throw new IllegalArgumentException("retainNewest must not be negative");
@@ -180,6 +214,23 @@ public final class Neo4jGraphStore implements GraphStore {
             try { deleteSnapshot(snapshotId); deleted++; } catch (IllegalStateException protectedSnapshot) { /* retained */ }
         }
         return deleted;
+    }
+
+    @Override
+    public int purgeProject(ProjectId projectId) {
+        try (var session = driver.session()) {
+            return session.executeWrite(tx -> {
+                var retained = tx.run("MATCH (s:GraphCrudSnapshot {projectId:$project}) WHERE s.leases > 0 RETURN count(s) AS count",
+                        Values.parameters("project", projectId.value())).single().get("count").asInt();
+                if (retained > 0) throw new IllegalStateException("project has retained snapshots: " + projectId.value());
+                var count = tx.run("MATCH (s:GraphCrudSnapshot {projectId:$project}) "
+                                + "OPTIONAL MATCH (f:GraphCrudFact {snapshotId:s.id}) WITH collect(f) AS facts, collect(s) AS snapshots "
+                                + "FOREACH (f IN facts | DELETE f) FOREACH (s IN snapshots | DELETE s) RETURN size(snapshots) AS count",
+                        Values.parameters("project", projectId.value())).single().get("count").asInt();
+                tx.run("MATCH (p:GraphCrudProject {id:$project}) DELETE p", Values.parameters("project", projectId.value())).consume();
+                return count;
+            });
+        }
     }
 
     private SnapshotLease lease(SnapshotId snapshotId) {
