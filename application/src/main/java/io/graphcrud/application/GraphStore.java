@@ -21,5 +21,7 @@ public interface GraphStore {
 
     byte[] exportJsonl(SnapshotId snapshotId);
 
+    Optional<CanonicalFact> findFact(SnapshotId snapshotId, String factKind, String canonicalId);
+
     TableImpactResult tableImpact(SnapshotId snapshotId, NodeId tableId, QueryBounds bounds);
 }

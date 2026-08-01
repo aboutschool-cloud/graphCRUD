@@ -40,4 +40,17 @@ class EvidenceOccurrenceContractTest {
 
         assertEquals(node.id(), occurrence.subject());
     }
+
+    @Test
+    void occurrence_identity_distinguishes_field_delimiters_from_field_boundaries() {
+        var subject = NodeId.of(NodeKind.TABLE, Map.of("table", "orders"));
+        var delimiterInAdapter = EvidenceOccurrence.of(
+                subject, new SnapshotId("snapshot-1"), "a|b",
+                new SourceAnchor("c", 1, 1), EvidenceLevel.CONFIRMED, "evidence");
+        var delimiterInPath = EvidenceOccurrence.of(
+                subject, new SnapshotId("snapshot-1"), "a",
+                new SourceAnchor("b|c", 1, 1), EvidenceLevel.CONFIRMED, "evidence");
+
+        assertNotEquals(delimiterInAdapter.id(), delimiterInPath.id());
+    }
 }

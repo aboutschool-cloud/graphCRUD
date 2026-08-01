@@ -34,8 +34,13 @@ public record EvidenceOccurrence(
 
     public EvidenceOccurrenceId id() {
         return new EvidenceOccurrenceId(String.join("|",
-                subject.subjectKind(), subject.subjectId(), snapshotId.value(), adapter,
-                sourceAnchor.canonicalValue(), evidenceLevel.name(), explanation));
+                CanonicalIdentityEncoding.component(subject.subjectKind()),
+                CanonicalIdentityEncoding.component(subject.subjectId()),
+                CanonicalIdentityEncoding.component(snapshotId.value()),
+                CanonicalIdentityEncoding.component(adapter),
+                CanonicalIdentityEncoding.component(sourceAnchor.canonicalValue()),
+                CanonicalIdentityEncoding.component(evidenceLevel.name()),
+                CanonicalIdentityEncoding.component(explanation)));
     }
 
     @Override

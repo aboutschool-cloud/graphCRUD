@@ -29,10 +29,14 @@ public record RelationshipAssertion(
 
     public RelationshipAssertionId id() {
         var qualifiers = semanticQualifiers.entrySet().stream()
-                .map(entry -> entry.getKey() + "=" + entry.getValue())
+                .map(entry -> CanonicalIdentityEncoding.component(entry.getKey())
+                        + "=" + CanonicalIdentityEncoding.component(entry.getValue()))
                 .collect(Collectors.joining("&"));
         return new RelationshipAssertionId(
-                source.canonicalValue() + "|" + type.name() + "|" + target.canonicalValue() + "|" + qualifiers);
+                CanonicalIdentityEncoding.component(source.canonicalValue())
+                        + "|" + CanonicalIdentityEncoding.component(type.name())
+                        + "|" + CanonicalIdentityEncoding.component(target.canonicalValue())
+                        + "|" + qualifiers);
     }
 
     @Override

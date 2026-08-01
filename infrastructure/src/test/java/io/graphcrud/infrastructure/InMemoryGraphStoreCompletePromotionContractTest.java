@@ -1,6 +1,7 @@
 package io.graphcrud.infrastructure;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.graphcrud.application.GraphStore;
 import io.graphcrud.application.GraphStoreCapability;
@@ -28,5 +29,17 @@ class InMemoryGraphStoreCompletePromotionContractTest {
         store.sealSnapshot(snapshotId, SnapshotCompletion.COMPLETE);
 
         assertEquals(snapshotId, store.activeSnapshot(projectId).orElseThrow());
+    }
+
+    @Test
+    void sealed_snapshot_identity_cannot_be_reused() {
+        GraphStore store = new InMemoryGraphStore();
+        var projectId = new ProjectId("billing");
+        var snapshotId = new SnapshotId("snapshot-complete");
+
+        store.beginSnapshot(projectId, snapshotId);
+        store.sealSnapshot(snapshotId, SnapshotCompletion.COMPLETE);
+
+        assertThrows(IllegalStateException.class, () -> store.beginSnapshot(projectId, snapshotId));
     }
 }

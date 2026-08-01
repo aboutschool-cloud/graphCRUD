@@ -63,4 +63,16 @@ class CanonicalIdentityContractTest {
         assertThrows(IllegalArgumentException.class, () ->
                 NodeId.of(NodeKind.CODE_SYMBOL, Map.of("symbol", "Orders#submit()V")));
     }
+
+    @Test
+    void relationship_identity_distinguishes_qualifier_delimiters_from_qualifier_structure() {
+        var source = NodeId.of(NodeKind.SQL_STATEMENT, Map.of("statement", "select-orders"));
+        var target = NodeId.of(NodeKind.TABLE, Map.of("table", "orders"));
+        var embeddedDelimiters = RelationshipAssertion.of(
+                source, RelationshipType.READS, target, Map.of("a", "b&c=d"));
+        var separateQualifiers = RelationshipAssertion.of(
+                source, RelationshipType.READS, target, Map.of("a", "b", "c", "d"));
+
+        assertNotEquals(embeddedDelimiters.id(), separateQualifiers.id());
+    }
 }

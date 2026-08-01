@@ -35,9 +35,10 @@ public final class InMemoryGraphStore implements GraphStore {
 
     @Override
     public void beginSnapshot(ProjectId projectId, SnapshotId snapshotId) {
-        if (stagingSnapshots.putIfAbsent(snapshotId, projectId) != null) {
+        if (factsBySnapshot.containsKey(snapshotId)) {
             throw new IllegalStateException("snapshot already exists: " + snapshotId.value());
         }
+        stagingSnapshots.put(snapshotId, projectId);
         factsBySnapshot.put(snapshotId, new ArrayList<>());
     }
 
@@ -82,6 +83,14 @@ public final class InMemoryGraphStore implements GraphStore {
     public byte[] exportJsonl(SnapshotId snapshotId) {
         requireSealed(snapshotId);
         return CanonicalJsonl.write(factsBySnapshot.get(snapshotId));
+    }
+
+    @Override
+    public Optional<CanonicalFact> findFact(SnapshotId snapshotId, String factKind, String canonicalId) {
+        requireSealed(snapshotId);
+        return factsBySnapshot.get(snapshotId).stream()
+                .filter(fact -> fact.factKind().equals(factKind) && fact.canonicalId().equals(canonicalId))
+                .findFirst();
     }
 
     @Override
