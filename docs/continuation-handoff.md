@@ -23,11 +23,13 @@ Continue the `grill-with-docs` design session for an evidence-first code knowled
 - SQL/DDL parser: JSqlParser. Failures retain the source SQL and reason, never regex-based inferred CRUD facts.
 - `table-impact` returns direct CRUD facts plus reverse static call paths, default depth 12 and cycles deduplicated; possible edges require explicit opt-in.
 
-## Next discussion
+## Continued discussion resolved
 
-Decide the definition of a code entry point. The proposed answer is Spring mapping annotations, `@Scheduled` methods, and `public static void main`; other public methods may be queried but are not labelled entry points.
+The follow-up design session resolved Code Entrypoint scope, stable node identity, relationship/evidence identity, conservative MyBatis binding, non-executing dependency resolution, explicit partial-snapshot promotion, fixture organization, modular project layout, Docker/CI boundaries, and Technical MVP versus Pilot-ready completion gates. The Phase 1 specification and glossary contain the normative results.
 
-Then resolve canonical node and edge IDs, MyBatis mapper-method binding, Maven and Gradle dependency-resolution safety, API partial-result behavior, fixture scenarios, project layout, Docker/CI, and milestones.
+## Next action
+
+Follow the dependency-ordered implementation roadmap, beginning with the golden model and in-memory vertical slice. Keep research questions and implementation tickets small enough to validate independently against the golden fixtures.
 
 ## Suggested skills
 

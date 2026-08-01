@@ -100,3 +100,17 @@ The answers are static structural evidence, not claims about business correctnes
 ## Documentation note
 
 `CONTEXT.md` contains the initial glossary. Its planned update could not be applied in the Windows restricted-token sandbox because updating existing files was rejected, although creating new files worked. The glossary additions are represented in the Phase 1 specification and should be synchronized after restarting in a workspace-write or trusted/full-access session.
+
+The glossary was synchronized during the continuation session after write access became available.
+
+## Continuation decisions
+
+- Code Entrypoint is a broad role for a method invoked by a framework or runtime through an evidenced Invocation Binding. Phase 1 support is an explicit allowlist: Spring HTTP and legacy URL bindings, servlet filters, schedules, application startup, Spring event listeners, explicitly configured message consumers, and manual UI Actions. Ordinary public methods are query origins, not entrypoints by visibility alone.
+- Logical node IDs remain stable across snapshots; locations and commits are snapshot evidence. Relationship Assertions are canonical semantic edges, while separate Evidence Occurrences retain each supporting source observation.
+- MyBatis mapper bindings are confirmed only when namespace and statement ID resolve uniquely. Overloads, conflicts, and runtime database selection remain possible or unresolved.
+- Customer build execution and dependency preparation are outside analysis. The analyzer uses explicit or offline classpaths and best-effort static metadata, never runs Maven/Gradle project code, and does not download by default.
+- Partial snapshots are sealed and queryable but do not replace active results without explicit acceptance.
+- Golden truth is organized as minimal scenario fixtures plus one integrated fixture, including negative assertions and evidence details.
+- Implementation is a Gradle Kotlin DSL multi-module modular monolith. Core models and contracts remain independent from JDT, SQL, Neo4j, CLI, and HTTP adapters.
+- CI keeps core tests Docker-free, runs fixed-digest Neo4j/Compose integration tests separately, and applies corpus, performance, security, SBOM, license, checksum, and offline-install gates to releases.
+- Technical MVP and Pilot-ready are separate completion states; the latter additionally requires offline operations, security/package verification, and an approved graph-storage licensing position.
