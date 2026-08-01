@@ -17,6 +17,18 @@ public interface GraphStore {
 
     void promotePartial(SnapshotId snapshotId);
 
+    void discardSnapshot(SnapshotId snapshotId);
+
+    void deleteSnapshot(SnapshotId snapshotId);
+
+    SnapshotLease retainSnapshot(SnapshotId snapshotId);
+
+    SnapshotLease retainActiveSnapshot(ProjectId projectId);
+
+    Optional<SnapshotCompletion> sealedSnapshotCompletion(SnapshotId snapshotId);
+
+    int cleanupSnapshots(ProjectId projectId, int retainNewest);
+
     Optional<SnapshotId> activeSnapshot(ProjectId projectId);
 
     byte[] exportJsonl(SnapshotId snapshotId);

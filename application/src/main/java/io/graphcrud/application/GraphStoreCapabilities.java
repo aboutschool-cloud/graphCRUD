@@ -8,7 +8,8 @@ public record GraphStoreCapabilities(Set<GraphStoreCapability> values) {
             GraphStoreCapability.STABLE_LOOKUP,
             GraphStoreCapability.BOUNDED_TRAVERSAL,
             GraphStoreCapability.SNAPSHOT_SWITCHING,
-            GraphStoreCapability.TRANSACTIONAL_PROMOTION);
+            GraphStoreCapability.TRANSACTIONAL_PROMOTION,
+            GraphStoreCapability.SNAPSHOT_CLEANUP);
 
     public GraphStoreCapabilities {
         values = Set.copyOf(values);

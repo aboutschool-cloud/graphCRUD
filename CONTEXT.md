@@ -55,3 +55,15 @@ _Avoid_: certainty score, runtime truth
 **Active Snapshot**:
 The analysis snapshot selected as the default query target. A partial snapshot is queryable but becomes active only after explicit acceptance.
 _Avoid_: latest run, automatically promoted partial result
+
+**Analysis Job**:
+One bounded attempt to analyze an Analysis Project and stage, seal, and optionally promote its resulting snapshot.
+_Avoid_: scan process, background task
+
+**Canonical Fact Analysis**:
+The cancellable analysis performed inside an Analysis Job that returns canonical facts and whether its snapshot is complete or partial.
+_Avoid_: analysis work, parser callback
+
+**Snapshot Lease**:
+A temporary claim on one sealed snapshot that keeps a query fixed to that snapshot and protects it from cleanup until released.
+_Avoid_: database lock, latest snapshot reference

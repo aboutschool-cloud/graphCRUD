@@ -23,7 +23,8 @@ class InMemoryGraphStoreCompletePromotionContractTest {
                 GraphStoreCapability.STABLE_LOOKUP,
                 GraphStoreCapability.BOUNDED_TRAVERSAL,
                 GraphStoreCapability.SNAPSHOT_SWITCHING,
-                GraphStoreCapability.TRANSACTIONAL_PROMOTION), store.capabilities().values());
+                GraphStoreCapability.TRANSACTIONAL_PROMOTION,
+                GraphStoreCapability.SNAPSHOT_CLEANUP), store.capabilities().values());
 
         store.beginSnapshot(projectId, snapshotId);
         store.sealSnapshot(snapshotId, SnapshotCompletion.COMPLETE);
