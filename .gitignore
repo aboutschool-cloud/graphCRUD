@@ -1,1 +1,4 @@
 .tools/
+.gradle/
+.gradle-user-home/
+**/build/
