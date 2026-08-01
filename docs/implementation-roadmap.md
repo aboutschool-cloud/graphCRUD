@@ -111,6 +111,22 @@ Deliverable: Spring/JDBC/MyBatis paths resolve to source-backed PostgreSQL CRUD 
 
 Gate: fixtures cover overload ambiguity, XML/annotation conflicts, `databaseId`, dynamic SQL, parse failure retention, CTE/MERGE and read-write statements, views, triggers, routines, and dynamic execution boundaries.
 
+### Stage 3 persistence analysis seams
+
+The `application` module owns two parser-neutral interfaces. `PostgreSqlAnalyzer`
+accepts one first-class SQL Statement, explicit Database Source/default schema, and a
+source anchor; it returns canonical CRUD facts without exposing JSqlParser types.
+`PersistenceProjectAnalyzer` accepts an Analysis Project plus existing Java facts and
+adds MyBatis XML and ordered in-root PostgreSQL Schema Source facts. Runtime-selected
+`databaseId`, dynamic MyBatis branches, provider SQL, parser failures, and dynamic
+PostgreSQL `EXECUTE` remain possible or unresolved.
+
+The adapters live in `infrastructure`. All Java annotation binding still crosses the
+existing JDT seam. SQL text reaches Table facts only through JSqlParser; schema
+declarations may locate View, Routine, and Trigger bodies, but their embedded DML is
+sent back through the same SQL interface. Contract tests cross only these application
+interfaces and use minimal project fixtures.
+
 Recommended conversation:
 
 > Use `tdd` to implement Stage 3 fixture [scenario name]. Do not infer CRUD with regex when parsing fails; retain the SQL source and unresolved reason. Run the complete golden suite.

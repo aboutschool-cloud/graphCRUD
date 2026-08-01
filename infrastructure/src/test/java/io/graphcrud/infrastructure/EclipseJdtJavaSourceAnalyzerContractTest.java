@@ -151,7 +151,9 @@ class EclipseJdtJavaSourceAnalyzerContractTest {
                 new SnapshotId("snapshot-jdbc"),
                 projectRoot,
                 new JavaBuildMetadata(
-                        "app", Map.of(sourceRoot, StandardCharsets.UTF_8), List.of(), true));
+                        "app", Map.of(sourceRoot, StandardCharsets.UTF_8), List.of(), true,
+                        java.util.Optional.of(new io.graphcrud.application.PostgreSqlContext(
+                                "orders-db", "public", Set.of("public.orders")))));
         var entry = NodeId.javaMethod("orders", "app", "java", "com.acme.Orders", "entry", "()V");
         var persist = NodeId.javaMethod("orders", "app", "java", "com.acme.Orders", "persist", "()V");
         var sql = NodeId.of(NodeKind.SQL_STATEMENT, Map.of(
@@ -182,8 +184,10 @@ class EclipseJdtJavaSourceAnalyzerContractTest {
         assertTrue(evidenceSubjects.contains(sql));
         assertTrue(assertions.stream().map(RelationshipAssertion::id).allMatch(evidenceSubjects::contains));
         assertTrue(first.stream().filter(NodeFact.class::isInstance).map(NodeFact.class::cast)
-                .noneMatch(fact -> fact.id().kind() == NodeKind.TABLE));
-        assertTrue(assertions.stream().noneMatch(assertion -> assertion.type() == RelationshipType.READS));
+                .anyMatch(fact -> fact.id().kind() == NodeKind.TABLE
+                        && "orders".equals(fact.id().identityParts().get("name"))));
+        assertTrue(assertions.stream().anyMatch(assertion -> assertion.type() == RelationshipType.READS
+                && assertion.source().equals(sql)));
     }
 
     @Test

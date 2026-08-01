@@ -3,6 +3,7 @@ package io.graphcrud.infrastructure;
 import io.graphcrud.application.JavaAnalysisInput;
 import io.graphcrud.application.JavaAnalysisResult;
 import io.graphcrud.application.JavaSourceAnalyzer;
+import io.graphcrud.application.PostgreSqlAnalysisInput;
 import io.graphcrud.application.SnapshotCompletion;
 import io.graphcrud.model.CanonicalFact;
 import io.graphcrud.model.EvidenceLevel;
@@ -257,6 +258,7 @@ public final class EclipseJdtJavaSourceAnalyzer implements JavaSourceAnalyzer {
                     addScheduledMethod(node, ast, relativePath);
                     addStartupMethod(node, ast, relativePath);
                     addEventListener(node, ast, relativePath);
+                    addMyBatisAnnotation(node, ast, relativePath);
                     return true;
                 }
             });
@@ -306,6 +308,63 @@ public final class EclipseJdtJavaSourceAnalyzer implements JavaSourceAnalyzer {
                     }
                 }
             }
+        }
+
+        private void addMyBatisAnnotation(
+                MethodDeclaration declaration, CompilationUnit ast, String relativePath) {
+            var binding = declaration.resolveBinding();
+            if (!isConfirmed(binding)) {
+                return;
+            }
+            for (var annotationName : List.of("Select", "Insert", "Update", "Delete")) {
+                var annotation = findAnnotation(declaration, "org.apache.ibatis.annotations." + annotationName);
+                if (annotation == null) {
+                    continue;
+                }
+                var sql = annotationValue(annotation);
+                var owner = nodeId(binding);
+                var anchor = sourceAnchor(ast, relativePath, annotation);
+                if (sql.isBlank()) {
+                    partial = true;
+                    facts.add(EvidenceOccurrence.of(
+                            owner, input.snapshotId(), ADAPTER, anchor, EvidenceLevel.UNRESOLVED,
+                            "MYBATIS_ANNOTATION_RUNTIME_DEPENDENT: @" + annotationName));
+                    continue;
+                }
+                addMyBatisSql(owner, sql, "annotation-" + annotationName.toLowerCase(java.util.Locale.ROOT), anchor);
+            }
+            for (var providerName : List.of("SelectProvider", "InsertProvider", "UpdateProvider", "DeleteProvider")) {
+                var annotation = findAnnotation(declaration, "org.apache.ibatis.annotations." + providerName);
+                if (annotation != null) {
+                    partial = true;
+                    facts.add(EvidenceOccurrence.of(
+                            nodeId(binding), input.snapshotId(), ADAPTER, sourceAnchor(ast, relativePath, annotation),
+                            EvidenceLevel.UNRESOLVED,
+                            "MYBATIS_PROVIDER_RUNTIME_DEPENDENT: @" + providerName));
+                }
+            }
+        }
+
+        private void addMyBatisSql(NodeId owner, String sql, String sourceKind, SourceAnchor anchor) {
+            var sqlId = NodeId.of(NodeKind.SQL_STATEMENT, Map.of(
+                    "project", input.projectId().value(),
+                    "module", input.buildMetadata().moduleName(),
+                    "owner", owner.canonicalValue(),
+                    "sourceKind", sourceKind,
+                    "sql", sql));
+            facts.add(new NodeFact(sqlId, Map.of("displayName", sql, "sql", sql, "sourceKind", sourceKind)));
+            facts.add(EvidenceOccurrence.of(
+                    sqlId, input.snapshotId(), ADAPTER, anchor, EvidenceLevel.CONFIRMED,
+                    "JDT recovered static MyBatis SQL."));
+            addRelationship(owner, RelationshipType.EXECUTES, sqlId, anchor,
+                    "The uniquely bound MyBatis Mapper method executes this SQL Statement.");
+            input.buildMetadata().postgreSqlContext().ifPresent(context -> {
+                var result = new JSqlParserPostgreSqlAnalyzer().analyze(new PostgreSqlAnalysisInput(
+                        input.projectId(), input.snapshotId(), sqlId, sql,
+                        context.databaseSource(), context.defaultSchema(), context.declaredTables(), anchor));
+                facts.addAll(result.facts());
+                if (result.completion() == SnapshotCompletion.PARTIAL) partial = true;
+            });
         }
 
         private void addManagedBean(TypeDeclaration declaration, CompilationUnit ast, String relativePath) {
@@ -1006,6 +1065,14 @@ public final class EclipseJdtJavaSourceAnalyzer implements JavaSourceAnalyzer {
             facts.add(EvidenceOccurrence.of(
                     assertion.id(), input.snapshotId(), ADAPTER, sourceAnchor(ast, relativePath, invocation),
                     EvidenceLevel.CONFIRMED, "The uniquely resolved direct JDBC call executes this SQL Statement."));
+            input.buildMetadata().postgreSqlContext().ifPresent(context -> {
+                var sqlResult = new JSqlParserPostgreSqlAnalyzer().analyze(new PostgreSqlAnalysisInput(
+                        input.projectId(), input.snapshotId(), sqlId, sql,
+                        context.databaseSource(), context.defaultSchema(), context.declaredTables(),
+                        sourceAnchor(ast, relativePath, invocation)));
+                facts.addAll(sqlResult.facts());
+                if (sqlResult.completion() == SnapshotCompletion.PARTIAL) partial = true;
+            });
         }
 
         private void addUnresolvedSqlInvocation(
@@ -1168,6 +1235,11 @@ public final class EclipseJdtJavaSourceAnalyzer implements JavaSourceAnalyzer {
                     }
                     if (value instanceof Object[] values && values.length == 1 && values[0] instanceof String string) {
                         return string;
+                    }
+                    if (value instanceof Object[] values
+                            && java.util.Arrays.stream(values).allMatch(String.class::isInstance)) {
+                        return java.util.Arrays.stream(values).map(String.class::cast)
+                                .collect(java.util.stream.Collectors.joining(" "));
                     }
                 }
             }

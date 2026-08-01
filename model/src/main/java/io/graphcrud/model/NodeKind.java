@@ -10,5 +10,10 @@ public enum NodeKind {
     SOURCE_FILE,
     CODE_SYMBOL,
     SQL_STATEMENT,
-    TABLE
+    DATABASE_SOURCE,
+    SCHEMA,
+    TABLE,
+    VIEW,
+    DATABASE_ROUTINE,
+    TRIGGER
 }
