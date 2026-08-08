@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "graphcrud-financial-crud-evidence-v1",
+  "repository": "https://github.com/LS-Amber/financial-trading-system.git",
+  "revision": "edadb0617ca6bb26e7f8bb542b02d0c5fb4bf958",
+  "snapshot": "git-edadb061-mp5",
+  "completion": "PARTIAL",
+  "tableCrudCoverage": {
+    "candidateBaseMapperCallSites": 51,
+    "recognizedBaseMapperCallSites": 51,
+    "confirmedTableCallSites": 51,
+    "unresolvedBaseMapperCallSites": 0,
+    "operations": { "INSERTS": 8, "READS": 28, "UPDATES": 15, "DELETES": 0 },
+    "wrapperCoverage": { "FULL": 0, "PARTIAL": 20, "NONE": 31 },
+    "ddlTables": 10,
+    "tablesWithCrudCalls": 9,
+    "entityTableMatches": { "matched": 10, "resolvedMapperEntities": 10 },
+    "customMapperStatements": { "analyzed": 0, "discovered": 0 }
+  },
+  "facts": { "node": 359, "relationshipAssertion": 502, "evidenceOccurrence": 1957, "total": 2818 },
+  "myBatisPlusEvidenceOccurrences": 213,
+  "deterministicExports": {
+    "runs": 2,
+    "sha256": "604f70ea607ed8c09d684d283d790eb22cc25079b7f12331173a24b25b1c8fda",
+    "identical": true
+  },
+  "reproduction": {
+    "analyze": "graphcrud analyze financial-trading-system git-edadb061-mp5 /workspace",
+    "export": "graphcrud export financial-trading-system git-edadb061-mp5",
+    "rawArtifacts": "C:/AI/ws/financial-trading-system/graphcrud-report/export-mp5-{1,2}.jsonl"
+  },
+  "remainingPartialScope": "Missing full Maven classpath and Lombok-generated members outside the confirmed table-level CRUD contract."
+}

@@ -34,7 +34,7 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import org.w3c.dom.Element;
 import org.xml.sax.InputSource;
 
-/** Project-level adapter for MyBatis XML and in-root PostgreSQL schema sources. */
+/** Project-level adapter for MyBatis XML, MyBatis-Plus generated CRUD, and in-root SQL schema sources. */
 public final class MyBatisPostgreSqlProjectAnalyzer implements PersistenceProjectAnalyzer {
     private static final String ADAPTER = "mybatis-postgresql-project";
     private static final Set<String> STATEMENT_ELEMENTS = Set.of("select", "insert", "update", "delete");
@@ -48,6 +48,30 @@ public final class MyBatisPostgreSqlProjectAnalyzer implements PersistenceProjec
     private static final Pattern CREATE_TABLE = Pattern.compile("(?is)create\\s+table\\s+(?:if\\s+not\\s+exists\\s+)?([^\\s(]+)");
     private static final Pattern STATIC_EXECUTE = Pattern.compile("(?is)execute\\s+'((?:''|[^'])*)'");
     private static final Pattern DYNAMIC_EXECUTE = Pattern.compile("(?is)\\bexecute\\s+(?!')([^;]+)");
+    private static final Pattern MYBATIS_PLUS_MAPPER = Pattern.compile(
+            "(?s)\\binterface\\s+(\\w+)\\s+extends\\s+([\\w.]*BaseMapper)\\s*<\\s*([\\w.]+)\\s*>");
+    private static final Pattern GENERIC_MYBATIS_PLUS_MAPPER = Pattern.compile(
+            "(?s)\\binterface\\s+(\\w+)\\s*<\\s*(\\w+)\\s*>\\s+extends\\s+([\\w.]*BaseMapper)\\s*<\\s*(\\w+)\\s*>");
+    private static final Pattern INTERMEDIATE_MYBATIS_PLUS_MAPPER = Pattern.compile(
+            "(?s)\\binterface\\s+(\\w+)\\s+extends\\s+([\\w.]+)\\s*<\\s*([\\w.]+)\\s*>");
+    private static final Pattern TABLE_NAME_ENTITY = Pattern.compile(
+            "(?s)@(?:[\\w.]+\\.)?TableName\\s*\\(\\s*(?:value\\s*=\\s*)?\"([^\"]+)\"[^)]*\\).*?\\bclass\\s+(\\w+)");
+    private static final Pattern MAPPER_FIELD = Pattern.compile("\\b(\\w+Mapper)\\s+(\\w+)\\s*(?:[;=])");
+    private static final Pattern JAVA_PACKAGE = Pattern.compile("(?m)^\\s*package\\s+([\\w.]+)\\s*;");
+    private static final Pattern JAVA_IMPORT = Pattern.compile("(?m)^\\s*import\\s+([\\w.]+)\\s*;");
+    private static final Pattern MYBATIS_PLUS_RAW_CALL = Pattern.compile(
+            "^JAVA_(?:DEPENDENCY_MISSING|BINDING_NULL): raw=(\\w+)\\.(\\w+)\\s*\\(");
+    private static final Map<String, RelationshipType> MYBATIS_PLUS_CRUD = Map.ofEntries(
+            Map.entry("insert", RelationshipType.INSERTS),
+            Map.entry("selectById", RelationshipType.READS), Map.entry("selectBatchIds", RelationshipType.READS),
+            Map.entry("selectOne", RelationshipType.READS), Map.entry("selectCount", RelationshipType.READS),
+            Map.entry("selectList", RelationshipType.READS), Map.entry("selectMaps", RelationshipType.READS),
+            Map.entry("selectObjs", RelationshipType.READS), Map.entry("selectPage", RelationshipType.READS),
+            Map.entry("selectMapsPage", RelationshipType.READS), Map.entry("exists", RelationshipType.READS),
+            Map.entry("selectByMap", RelationshipType.READS), Map.entry("updateById", RelationshipType.UPDATES),
+            Map.entry("update", RelationshipType.UPDATES), Map.entry("deleteById", RelationshipType.DELETES),
+            Map.entry("deleteBatchIds", RelationshipType.DELETES), Map.entry("delete", RelationshipType.DELETES),
+            Map.entry("deleteByMap", RelationshipType.DELETES));
 
     @Override
     public JavaAnalysisResult analyze(PersistenceProjectAnalysisInput input) {
@@ -57,6 +81,7 @@ public final class MyBatisPostgreSqlProjectAnalyzer implements PersistenceProjec
             var state = new State(input, root, facts);
             state.readMyBatisXml();
             state.replaySchemaSources();
+            state.resolveMyBatisPlusCrud();
             facts.sort(Comparator.comparing(CanonicalFact::factKind).thenComparing(CanonicalFact::canonicalId));
             var unresolved = facts.stream().filter(EvidenceOccurrence.class::isInstance)
                     .map(EvidenceOccurrence.class::cast)
@@ -79,6 +104,9 @@ public final class MyBatisPostgreSqlProjectAnalyzer implements PersistenceProjec
         private final Set<String> declaredTables = new HashSet<>();
         private final Set<NodeId> conflictingObjects = new HashSet<>();
         private final Set<String> conflictingRoutineNames = new HashSet<>();
+        private final Map<String, SourceAnchor> declaredTableAnchors = new HashMap<>();
+        private Boolean optimisticLockConfigured;
+        private SourceAnchor optimisticLockAnchor;
         private boolean partial;
 
         private State(PersistenceProjectAnalysisInput input, Path root, List<CanonicalFact> facts) {
@@ -243,7 +271,8 @@ public final class MyBatisPostgreSqlProjectAnalyzer implements PersistenceProjec
         private void createTables(Path path, String content) {
             var matcher = CREATE_TABLE.matcher(content);
             while (matcher.find()) {
-                var table = table(matcher.group(1));
+                var identifier = matcher.group(1).replace("`", "");
+                var table = table(identifier);
                 var qualified = table.identityParts().get("schema") + "." + table.identityParts().get("name");
                 if (!declaredTables.add(qualified)) {
                     partial = true;
@@ -254,11 +283,266 @@ public final class MyBatisPostgreSqlProjectAnalyzer implements PersistenceProjec
                             EvidenceLevel.UNRESOLVED, "POSTGRESQL_SCHEMA_CONFLICT_TABLE: " + matcher.group(1)));
                     continue;
                 }
-                addNode(table, Map.of("originalIdentifier", matcher.group(1), "dialect", "postgresql"), anchor(path),
-                        "PostgreSQL Schema Source declares this Table.");
+                var dialect = input.databaseId().filter("mysql"::equalsIgnoreCase).isPresent() ? "mysql" : "postgresql";
+                addNode(table, Map.of("originalIdentifier", matcher.group(1), "dialect", dialect), anchor(path),
+                        dialect.equals("mysql") ? "MySQL Schema Source declares this Table."
+                                : "PostgreSQL Schema Source declares this Table.");
                 confirmDeclaredTable(table);
+                declaredTableAnchors.put(qualified, anchorAt(path, content, matcher.start()));
             }
         }
+
+        private void resolveMyBatisPlusCrud() throws IOException {
+            var mappers = new HashMap<String, MapperMetadata>();
+            var entities = new HashMap<String, EntityMetadata>();
+            var javaFiles = files(".java");
+            var genericParents = new HashSet<String>();
+            for (var path : javaFiles) {
+                var source = Files.readString(path, StandardCharsets.UTF_8);
+                var generic = GENERIC_MYBATIS_PLUS_MAPPER.matcher(source);
+                while (generic.find()) {
+                    var imports = imports(source);
+                    if (generic.group(2).equals(generic.group(4))
+                            && "com.baomidou.mybatisplus.core.mapper.BaseMapper".equals(
+                                    resolveType(generic.group(3), source, imports)))
+                        genericParents.add(qualify(generic.group(1), source));
+                }
+            }
+            for (var path : javaFiles) {
+                var source = Files.readString(path, StandardCharsets.UTF_8);
+                var mapper = MYBATIS_PLUS_MAPPER.matcher(source);
+                while (mapper.find()) {
+                    var imports = imports(source);
+                    var baseType = resolveType(mapper.group(2), source, imports);
+                    if (!"com.baomidou.mybatisplus.core.mapper.BaseMapper".equals(baseType)) continue;
+                    var mapperType = qualify(mapper.group(1), source);
+                    var entityType = resolveType(mapper.group(3), source, imports);
+                    var bodyStart = source.indexOf('{', mapper.end());
+                    var bodyEnd = matchingBrace(source, bodyStart);
+                    var mapperBody = bodyStart >= 0 && bodyEnd > bodyStart
+                            ? source.substring(bodyStart + 1, bodyEnd) : "";
+                    var customMethods = MYBATIS_PLUS_CRUD.keySet().stream()
+                            .filter(method -> Pattern.compile("\\b" + Pattern.quote(method) + "\\s*\\(")
+                                    .matcher(mapperBody).find())
+                            .collect(java.util.stream.Collectors.toSet());
+                    mappers.put(mapperType,
+                            new MapperMetadata(entityType, anchorAt(path, source, mapper.start()), customMethods));
+                }
+                var intermediate = INTERMEDIATE_MYBATIS_PLUS_MAPPER.matcher(source);
+                while (intermediate.find()) {
+                    var imports = imports(source);
+                    var parent = resolveType(intermediate.group(2), source, imports);
+                    if (!genericParents.contains(parent)) continue;
+                    var mapperType = qualify(intermediate.group(1), source);
+                    var entityType = resolveType(intermediate.group(3), source, imports);
+                    var bodyStart = source.indexOf('{', intermediate.end());
+                    var bodyEnd = matchingBrace(source, bodyStart);
+                    var body = bodyStart >= 0 && bodyEnd > bodyStart
+                            ? source.substring(bodyStart + 1, bodyEnd) : "";
+                    var customMethods = MYBATIS_PLUS_CRUD.keySet().stream()
+                            .filter(method -> Pattern.compile("\\b" + Pattern.quote(method) + "\\s*\\(")
+                                    .matcher(body).find()).collect(java.util.stream.Collectors.toSet());
+                    mappers.put(mapperType, new MapperMetadata(
+                            entityType, anchorAt(path, source, intermediate.start()), customMethods));
+                }
+                var entity = TABLE_NAME_ENTITY.matcher(source);
+                while (entity.find()) {
+                    var bodyStart = source.indexOf('{', entity.end());
+                    var bodyEnd = matchingBrace(source, bodyStart);
+                    var entityBody = bodyStart >= 0 && bodyEnd > bodyStart
+                            ? source.substring(bodyStart + 1, bodyEnd) : "";
+                    entities.put(qualify(entity.group(2), source), new EntityMetadata(
+                            entity.group(1), anchorAt(path, source, entity.start()), entityBody.contains("@TableLogic"),
+                            entityBody.contains("@Version")));
+                }
+            }
+            var resolvedEvidence = new ArrayList<EvidenceOccurrence>();
+            for (var fact : List.copyOf(facts)) {
+                if (!(fact instanceof EvidenceOccurrence evidence)
+                        || evidence.evidenceLevel() != EvidenceLevel.UNRESOLVED) continue;
+                var call = MYBATIS_PLUS_RAW_CALL.matcher(evidence.explanation());
+                if (!call.find()) continue;
+                var operation = MYBATIS_PLUS_CRUD.get(call.group(2));
+                if (operation == null || !(evidence.subject() instanceof NodeId caller)
+                        || caller.kind() != NodeKind.CODE_SYMBOL) continue;
+                var sourcePath = root.resolve(evidence.sourceAnchor().path()).normalize();
+                if (!sourcePath.startsWith(root) || !Files.isRegularFile(sourcePath)) continue;
+                var callerSource = Files.readString(sourcePath, StandardCharsets.UTF_8);
+                var callerImports = imports(callerSource);
+                var fields = new HashMap<String, String>();
+                var visibleSource = visibleSource(callerSource, caller, evidence.sourceAnchor());
+                var field = MAPPER_FIELD.matcher(visibleSource);
+                while (field.find()) fields.put(field.group(2), resolveType(field.group(1), callerSource, callerImports));
+                var mapperType = fields.get(call.group(1));
+                var mapper = mappers.get(mapperType);
+                if (mapper == null || mapper.customMethods().contains(call.group(2))) continue;
+                var entity = entities.get(mapper.entityType());
+                if (entity == null) continue;
+                var target = table(entity.tableName());
+                var qualified = target.identityParts().get("schema") + "." + target.identityParts().get("name");
+                var level = declaredTables.contains(qualified) ? EvidenceLevel.CONFIRMED : EvidenceLevel.POSSIBLE;
+                var qualifiers = new HashMap<String, String>();
+                qualifiers.put("framework", "mybatis-plus"); qualifiers.put("method", call.group(2));
+                qualifiers.put("mapper", mapperType); qualifiers.put("entity", mapper.entityType());
+                var wrapper = wrapperEvidence(evidence.explanation(), call.group(2));
+                qualifiers.put("wrapperCoverage", wrapper.coverage());
+                if (!wrapper.operations().isBlank()) qualifiers.put("wrapperOperations", wrapper.operations());
+                if (!wrapper.reason().isBlank()) qualifiers.put("wrapperReason", wrapper.reason());
+                if (operation == RelationshipType.DELETES && entity.logicalDelete())
+                    qualifiers.put("physicalEffect", "UPDATE_LOGICAL_DELETE");
+                if (operation == RelationshipType.UPDATES && entity.versioned()
+                        && projectUsesOptimisticLock()) qualifiers.put("optimisticLock", "CONFIGURED");
+                var assertion = RelationshipAssertion.of(caller, operation, target, qualifiers);
+                if (facts.stream().noneMatch(existing -> existing instanceof RelationshipAssertion relationship
+                        && relationship.id().equals(assertion.id()))) facts.add(assertion);
+                facts.add(EvidenceOccurrence.of(assertion.id(), input.snapshotId(), "mybatis-plus",
+                        evidence.sourceAnchor(), level,
+                        "MyBatis-Plus BaseMapper<" + mapper.entityType() + ">." + call.group(2)
+                                + " resolves through @TableName to " + entity.tableName() + "."));
+                facts.add(EvidenceOccurrence.of(assertion.id(), input.snapshotId(), "mybatis-plus",
+                        mapper.anchor(), level, "Official MyBatis-Plus BaseMapper generic declares mapper="
+                                + mapperType + " entity=" + mapper.entityType() + "."));
+                facts.add(EvidenceOccurrence.of(assertion.id(), input.snapshotId(), "mybatis-plus",
+                        entity.anchor(), level, "Entity @TableName declares table=" + entity.tableName() + "."));
+                if (level == EvidenceLevel.CONFIRMED) {
+                    facts.add(EvidenceOccurrence.of(assertion.id(), input.snapshotId(), "mybatis-plus",
+                            declaredTableAnchors.get(qualified), level, "Schema Source declares matched table="
+                                    + entity.tableName() + "."));
+                } else partial = true;
+                if ("CONFIGURED".equals(qualifiers.get("optimisticLock")) && optimisticLockAnchor != null)
+                    facts.add(EvidenceOccurrence.of(assertion.id(), input.snapshotId(), "mybatis-plus",
+                            optimisticLockAnchor, level,
+                            "MyBatisPlusInterceptor registers OptimisticLockerInnerInterceptor."));
+                resolvedEvidence.add(evidence);
+            }
+            facts.removeAll(resolvedEvidence);
+        }
+
+        private static Map<String, String> imports(String source) {
+            var values = new HashMap<String, String>();
+            var matcher = JAVA_IMPORT.matcher(source);
+            while (matcher.find()) {
+                var qualified = matcher.group(1);
+                values.put(qualified.substring(qualified.lastIndexOf('.') + 1), qualified);
+            }
+            return values;
+        }
+
+        private static String qualify(String simpleName, String source) {
+            var matcher = JAVA_PACKAGE.matcher(source);
+            return matcher.find() ? matcher.group(1) + "." + simpleName : simpleName;
+        }
+
+        private static String resolveType(String name, String source, Map<String, String> imports) {
+            if (name.contains(".")) return name;
+            return imports.getOrDefault(name, qualify(name, source));
+        }
+
+        private WrapperEvidence wrapperEvidence(String explanation, String method) {
+            if (Set.of("insert", "selectById", "selectBatchIds", "updateById", "deleteById", "deleteBatchIds")
+                    .contains(method)) return new WrapperEvidence("NONE", "", "");
+            var searchable = explanation;
+            var operations = List.of("eq", "gt", "ge", "lt", "le", "orderByAsc", "orderByDesc", "and", "or")
+                    .stream().filter(name -> Pattern.compile("\\." + name + "\\s*\\(").matcher(searchable).find())
+                    .sorted().collect(java.util.stream.Collectors.joining(","));
+            var unsafe = List.of("apply", "last", "first", "setSql").stream()
+                    .filter(name -> Pattern.compile("\\." + name + "\\s*\\(").matcher(searchable).find())
+                    .sorted().collect(java.util.stream.Collectors.joining(","));
+            if (!unsafe.isBlank()) return new WrapperEvidence("PARTIAL", operations,
+                    "runtime-sql-fragment:" + unsafe);
+            if (explanation.matches("(?s).*\\(\\s*null\\s*\\).*")) return new WrapperEvidence("NONE", "", "");
+            return new WrapperEvidence("PARTIAL", operations,
+                    operations.isBlank() ? "wrapper-predicate-not-statically-reconstructed"
+                            : "wrapper-columns-and-control-flow-not-fully-resolved");
+        }
+
+        private boolean projectUsesOptimisticLock() throws IOException {
+            if (optimisticLockConfigured != null) return optimisticLockConfigured;
+            for (var path : files(".java")) {
+                var source = Files.readString(path, StandardCharsets.UTF_8);
+                var matcher = Pattern.compile("\\.addInnerInterceptor\\s*\\(\\s*new\\s+OptimisticLockerInnerInterceptor\\s*\\(")
+                        .matcher(withoutCommentsAndStrings(source));
+                if (matcher.find()) {
+                    optimisticLockAnchor = anchorAt(path, source, matcher.start());
+                    return optimisticLockConfigured = true;
+                }
+            }
+            return optimisticLockConfigured = false;
+        }
+
+        private static String visibleSource(String source, NodeId caller, SourceAnchor callAnchor) {
+            int callOffset = offset(source, callAnchor.line(), callAnchor.column());
+            var sanitized = withoutCommentsAndStrings(source);
+            var declaring = caller.identityParts().get("declaringType");
+            var simple = declaring.substring(Math.max(declaring.lastIndexOf('.'), declaring.lastIndexOf('$')) + 1);
+            var type = Pattern.compile("\\b(?:class|interface|record)\\s+" + Pattern.quote(simple) + "\\b")
+                    .matcher(sanitized);
+            while (type.find()) {
+                int opening = source.indexOf('{', type.end());
+                int closing = matchingBrace(source, opening);
+                if (opening < 0 || !(opening < callOffset && callOffset < closing)) continue;
+                var visible = new StringBuilder();
+                var field = MAPPER_FIELD.matcher(sanitized.substring(opening + 1, closing));
+                while (field.find()) {
+                    int absolute = opening + 1 + field.start();
+                    if (braceDepth(sanitized, opening + 1, absolute) == 0)
+                        visible.append(sanitized, absolute, opening + 1 + field.end()).append(';');
+                }
+                return visible.toString();
+            }
+            return source.substring(0, Math.min(callOffset, source.length()));
+        }
+
+        private static int braceDepth(String source, int start, int end) {
+            int depth = 0;
+            for (int index = start; index < end; index++) {
+                if (source.charAt(index) == '{') depth++;
+                else if (source.charAt(index) == '}') depth--;
+            }
+            return depth;
+        }
+
+        private static int offset(String source, int line, int column) {
+            int currentLine = 1, index = 0;
+            while (index < source.length() && currentLine < line)
+                if (source.charAt(index++) == '\n') currentLine++;
+            return Math.min(source.length(), index + Math.max(0, column - 1));
+        }
+
+        private static String withoutCommentsAndStrings(String source) {
+            var result = new StringBuilder(source);
+            boolean line = false, block = false, string = false, character = false, escaped = false;
+            for (int index = 0; index < source.length(); index++) {
+                char value = source.charAt(index), next = index + 1 < source.length() ? source.charAt(index + 1) : '\0';
+                if (line) { if (value == '\n') line = false; else result.setCharAt(index, ' '); continue; }
+                if (block) { result.setCharAt(index, value == '\n' ? '\n' : ' '); if (value == '*' && next == '/') { result.setCharAt(++index, ' '); block = false; } continue; }
+                if (string || character) {
+                    result.setCharAt(index, value == '\n' ? '\n' : ' ');
+                    if (!escaped && ((string && value == '"') || (character && value == '\''))) { string = false; character = false; }
+                    escaped = !escaped && value == '\\'; continue;
+                }
+                if (value == '/' && next == '/') { result.setCharAt(index, ' '); result.setCharAt(++index, ' '); line = true; }
+                else if (value == '/' && next == '*') { result.setCharAt(index, ' '); result.setCharAt(++index, ' '); block = true; }
+                else if (value == '"') { result.setCharAt(index, ' '); string = true; escaped = false; }
+                else if (value == '\'') { result.setCharAt(index, ' '); character = true; escaped = false; }
+            }
+            return result.toString();
+        }
+
+        private static int matchingBrace(String source, int opening) {
+            if (opening < 0) return -1;
+            int depth = 0;
+            for (int index = opening; index < source.length(); index++) {
+                char value = source.charAt(index);
+                if (value == '{') depth++;
+                else if (value == '}' && --depth == 0) return index;
+            }
+            return -1;
+        }
+
+        private record MapperMetadata(String entityType, SourceAnchor anchor, Set<String> customMethods) {}
+        private record EntityMetadata(String tableName, SourceAnchor anchor, boolean logicalDelete, boolean versioned) {}
+        private record WrapperEvidence(String coverage, String operations, String reason) {}
 
         private void createViews(Path path, String content) {
             var matcher = CREATE_VIEW.matcher(content);
@@ -646,6 +930,14 @@ public final class MyBatisPostgreSqlProjectAnalyzer implements PersistenceProjec
         }
 
         private SourceAnchor anchor(Path path) { return new SourceAnchor(relative(path), 1, 1); }
+        private SourceAnchor anchorAt(Path path, String source, int offset) {
+            int line = 1, column = 1;
+            for (int index = 0; index < Math.min(offset, source.length()); index++) {
+                if (source.charAt(index) == '\n') { line++; column = 1; }
+                else column++;
+            }
+            return new SourceAnchor(relative(path), line, column);
+        }
         private String relative(Path path) { return root.relativize(path).toString().replace('\\', '/'); }
         private record RankedPath(Path path, int priority) {}
     }

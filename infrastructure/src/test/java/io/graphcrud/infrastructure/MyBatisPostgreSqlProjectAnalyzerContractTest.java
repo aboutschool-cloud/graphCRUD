@@ -182,6 +182,202 @@ class MyBatisPostgreSqlProjectAnalyzerContractTest {
                         && a.target().kind() == NodeKind.DATABASE_ROUTINE));
     }
 
+    @Test
+    void mybatis_plus_base_mapper_calls_resolve_entity_table_and_mysql_ddl() throws Exception {
+        write("src/main/java/com/acme/Order.java", """
+                package com.acme;
+                @TableName("t_order") public class Order {}
+                """);
+        write("src/main/java/com/acme/OrderMapper.java", """
+                package com.acme;
+                import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+                public interface OrderMapper extends BaseMapper<Order> {}
+                class LaterType { void updateById(Order ignored) {} }
+                """);
+        write("src/main/java/com/acme/OrderService.java", """
+                package com.acme;
+                class OrderService {
+                  private OrderMapper orderMapper;
+                  void prior() { PositionMapper orderMapper = null; }
+                  void work() {
+                    { PositionMapper orderMapper = null; }
+                    orderMapper.insert(new Order());
+                    orderMapper.selectPage(page, wrapper);
+                    orderMapper.updateById(new Order());
+                  }
+                  class Other { PositionMapper orderMapper; }
+                }
+                """);
+        write("src/main/java/com/acme/Position.java", "package com.acme; @TableName(\"t_position\") class Position {}");
+        write("src/main/java/com/acme/PositionMapper.java", """
+                package com.acme;
+                import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+                interface PositionMapper extends BaseMapper<Position> {}
+                """);
+        write("db/migration/V1__mysql.sql", "CREATE TABLE `t_order` (id BIGINT PRIMARY KEY) ENGINE=InnoDB;");
+        var caller = NodeId.javaMethod("orders", "app", "java", "com.acme.OrderService", "work", "()V");
+        var javaFacts = new java.util.ArrayList<io.graphcrud.model.CanonicalFact>();
+        javaFacts.add(new NodeFact(caller, Map.of("displayName", "work")));
+        javaFacts.add(unresolved(caller, 7, "orderMapper.insert(new Order())"));
+        javaFacts.add(unresolved(caller, 8, "orderMapper.selectPage(page,wrapper)"));
+        javaFacts.add(unresolved(caller, 9, "orderMapper.updateById(new Order())"));
+
+        var result = analyze(Optional.of("mysql"), javaFacts);
+
+        assertTrue(hasCrudFrom(result, caller, RelationshipType.INSERTS, "t_order", EvidenceLevel.CONFIRMED));
+        assertTrue(hasCrudFrom(result, caller, RelationshipType.READS, "t_order", EvidenceLevel.CONFIRMED));
+        assertTrue(hasCrudFrom(result, caller, RelationshipType.UPDATES, "t_order", EvidenceLevel.CONFIRMED));
+        assertFalse(hasEvidence(result, "JAVA_DEPENDENCY_MISSING: raw=orderMapper.", EvidenceLevel.UNRESOLVED));
+        assertEquals(4, result.facts().stream().filter(EvidenceOccurrence.class::isInstance)
+                .map(EvidenceOccurrence.class::cast)
+                .filter(e -> e.subject().subjectKind().equals("relationshipAssertion"))
+                .filter(e -> e.explanation().contains("t_order") || e.explanation().contains("OrderMapper"))
+                .filter(e -> e.sourceAnchor().path().contains("Order") || e.sourceAnchor().path().contains("mysql"))
+                .count() / 3);
+    }
+
+    @Test
+    void unrelated_base_mapper_and_custom_same_name_are_not_promoted() throws Exception {
+        write("src/main/java/com/acme/Order.java", "package com.acme; @TableName(\"t_order\") class Order {}");
+        write("src/main/java/com/acme/ForeignMapper.java", """
+                package com.acme;
+                interface BaseMapper<T> {}
+                interface ForeignMapper extends BaseMapper<Order> {}
+                """);
+        write("src/main/java/com/acme/CustomMapper.java", """
+                package com.acme;
+                import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+                interface CustomMapper extends BaseMapper<Order> { int updateById(Order value); }
+                """);
+        write("src/main/java/com/acme/Service.java", """
+                package com.acme; class Service { ForeignMapper foreignMapper; CustomMapper customMapper;
+                void work() { foreignMapper.insert(new Order()); customMapper.updateById(new Order()); } }
+                """);
+        write("db/migration/V1.sql", "create table t_order(id bigint)");
+        var caller = NodeId.javaMethod("orders", "app", "java", "com.acme.Service", "work", "()V");
+        var facts = new java.util.ArrayList<io.graphcrud.model.CanonicalFact>();
+        facts.add(new NodeFact(caller, Map.of()));
+        facts.add(EvidenceOccurrence.of(caller, new SnapshotId("stage-3-project"), "eclipse-jdt",
+                new io.graphcrud.model.SourceAnchor("src/main/java/com/acme/Service.java", 2, 31),
+                EvidenceLevel.UNRESOLVED, "JAVA_DEPENDENCY_MISSING: raw=foreignMapper.insert(new Order()) candidates=[]"));
+        facts.add(EvidenceOccurrence.of(caller, new SnapshotId("stage-3-project"), "eclipse-jdt",
+                new io.graphcrud.model.SourceAnchor("src/main/java/com/acme/Service.java", 2, 70),
+                EvidenceLevel.UNRESOLVED, "JAVA_DEPENDENCY_MISSING: raw=customMapper.updateById(new Order()) candidates=[]"));
+
+        var result = analyze(Optional.of("mysql"), facts);
+        assertFalse(hasCrudFrom(result, caller, RelationshipType.INSERTS, "t_order", EvidenceLevel.CONFIRMED));
+        assertFalse(hasCrudFrom(result, caller, RelationshipType.UPDATES, "t_order", EvidenceLevel.CONFIRMED));
+    }
+
+    @Test
+    void missing_ddl_is_possible_and_keeps_snapshot_partial() throws Exception {
+        write("src/main/java/com/acme/Order.java", "package com.acme; @TableName(\"missing_order\") class Order {}");
+        write("src/main/java/com/acme/OrderMapper.java", """
+                package com.acme;
+                import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+                interface OrderMapper extends BaseMapper<Order> {}
+                """);
+        write("src/main/java/com/acme/Service.java", "package com.acme; class Service { OrderMapper orderMapper; void work(){ orderMapper.insert(new Order()); }}");
+        var caller = NodeId.javaMethod("orders", "app", "java", "com.acme.Service", "work", "()V");
+        var facts = List.<io.graphcrud.model.CanonicalFact>of(new NodeFact(caller, Map.of()),
+                EvidenceOccurrence.of(caller, new SnapshotId("stage-3-project"), "eclipse-jdt",
+                        new io.graphcrud.model.SourceAnchor("src/main/java/com/acme/Service.java", 1, 75),
+                        EvidenceLevel.UNRESOLVED, "JAVA_BINDING_NULL: raw=orderMapper.insert(new Order()) candidates=[]"));
+        var result = analyze(Optional.of("mysql"), facts);
+        assertTrue(hasCrudFrom(result, caller, RelationshipType.INSERTS, "missing_order", EvidenceLevel.POSSIBLE));
+        assertEquals(SnapshotCompletion.PARTIAL, result.completion());
+    }
+
+    @Test
+    void wrapper_logical_delete_and_optimistic_lock_are_qualified_without_double_counting() throws Exception {
+        write("src/main/java/com/acme/Order.java", """
+                package com.acme; @TableName("t_order") class Order {
+                  @TableLogic int deleted; @Version int version;
+                }
+                """);
+        write("src/main/java/com/acme/OrderMapper.java", """
+                package com.acme;
+                import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+                interface OrderMapper extends BaseMapper<Order> {}
+                """);
+        write("src/main/java/com/acme/Config.java", """
+                package com.acme; class Config { void configure(MybatisPlusInterceptor value) {
+                  value.addInnerInterceptor(new OptimisticLockerInnerInterceptor());
+                }}
+                """);
+        write("src/main/java/com/acme/Service.java", """
+                package com.acme; class Service { OrderMapper orderMapper; void work(){
+                  orderMapper.selectList(new LambdaQueryWrapper<Order>().eq(Order::id, 1).gt(Order::id, 0).orderByDesc(Order::id));
+                  orderMapper.updateById(new Order());
+                  orderMapper.deleteById(1L);
+                }}
+                """);
+        write("db/migration/V1.sql", "create table t_order(id bigint)");
+        var caller = NodeId.javaMethod("orders", "app", "java", "com.acme.Service", "work", "()V");
+        var facts = new java.util.ArrayList<io.graphcrud.model.CanonicalFact>();
+        facts.add(new NodeFact(caller, Map.of()));
+        facts.add(unresolvedAt(caller, 2, "src/main/java/com/acme/Service.java",
+                "orderMapper.selectList(new LambdaQueryWrapper<Order>().eq(Order::id,1).gt(Order::id,0).orderByDesc(Order::id))"));
+        facts.add(unresolvedAt(caller, 3, "src/main/java/com/acme/Service.java", "orderMapper.updateById(new Order())"));
+        facts.add(unresolvedAt(caller, 4, "src/main/java/com/acme/Service.java", "orderMapper.deleteById(1L)"));
+        var result = analyze(Optional.of("mysql"), facts);
+        var relationships = result.facts().stream().filter(RelationshipAssertion.class::isInstance)
+                .map(RelationshipAssertion.class::cast).filter(a -> a.source().equals(caller)).toList();
+        assertTrue(relationships.stream().anyMatch(a -> a.type() == RelationshipType.READS
+                && "PARTIAL".equals(a.semanticQualifiers().get("wrapperCoverage"))
+                && a.semanticQualifiers().get("wrapperOperations").contains("orderByDesc")));
+        assertTrue(relationships.stream().anyMatch(a -> a.type() == RelationshipType.UPDATES
+                && "CONFIGURED".equals(a.semanticQualifiers().get("optimisticLock"))));
+        assertTrue(relationships.stream().anyMatch(a -> a.type() == RelationshipType.DELETES
+                && "UPDATE_LOGICAL_DELETE".equals(a.semanticQualifiers().get("physicalEffect"))));
+    }
+
+    @Test
+    void intermediate_generic_mapper_substitutes_entity_type() throws Exception {
+        write("src/main/java/com/acme/Order.java", "package com.acme; @TableName(\"t_order\") class Order {}");
+        write("src/main/java/com/acme/RootMapper.java", """
+                package com.acme;
+                import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+                interface RootMapper<T> extends BaseMapper<T> {}
+                """);
+        write("src/main/java/com/acme/OrderMapper.java",
+                "package com.acme; interface OrderMapper extends RootMapper<Order> {}");
+        write("src/main/java/com/acme/Service.java",
+                "package com.acme; class Service { OrderMapper orderMapper; void work(){ orderMapper.insert(new Order()); }}");
+        write("db/migration/V1.sql", "create table t_order(id bigint)");
+        var caller = NodeId.javaMethod("orders", "app", "java", "com.acme.Service", "work", "()V");
+        var facts = List.<io.graphcrud.model.CanonicalFact>of(new NodeFact(caller, Map.of()),
+                EvidenceOccurrence.of(caller, new SnapshotId("stage-3-project"), "eclipse-jdt",
+                        new io.graphcrud.model.SourceAnchor("src/main/java/com/acme/Service.java", 1, 75),
+                        EvidenceLevel.UNRESOLVED,
+                        "JAVA_DEPENDENCY_MISSING: raw=orderMapper.insert(new Order()) candidates=[]"));
+        var result = analyze(Optional.of("mysql"), facts);
+        assertTrue(hasCrudFrom(result, caller, RelationshipType.INSERTS, "t_order", EvidenceLevel.CONFIRMED));
+    }
+
+    @Test
+    void commented_optimistic_locker_configuration_is_not_confirmed() throws Exception {
+        write("src/main/java/com/acme/Order.java", "package com.acme; @TableName(\"t_order\") class Order { @Version int version; }");
+        write("src/main/java/com/acme/OrderMapper.java", """
+                package com.acme;
+                import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+                interface OrderMapper extends BaseMapper<Order> {}
+                """);
+        write("src/main/java/com/acme/Config.java", "package com.acme; class Config { // value.addInnerInterceptor(new OptimisticLockerInnerInterceptor());\n }");
+        write("src/main/java/com/acme/Service.java", "package com.acme; class Service { OrderMapper orderMapper; void work(){ orderMapper.updateById(new Order()); }}");
+        write("db/migration/V1.sql", "create table t_order(id bigint)");
+        var caller = NodeId.javaMethod("orders", "app", "java", "com.acme.Service", "work", "()V");
+        var facts = List.<io.graphcrud.model.CanonicalFact>of(new NodeFact(caller, Map.of()),
+                EvidenceOccurrence.of(caller, new SnapshotId("stage-3-project"), "eclipse-jdt",
+                        new io.graphcrud.model.SourceAnchor("src/main/java/com/acme/Service.java", 1, 75),
+                        EvidenceLevel.UNRESOLVED,
+                        "JAVA_DEPENDENCY_MISSING: raw=orderMapper.updateById(new Order()) candidates=[]"));
+        var result = analyze(Optional.of("mysql"), facts);
+        assertTrue(result.facts().stream().filter(RelationshipAssertion.class::isInstance)
+                .map(RelationshipAssertion.class::cast).filter(a -> a.source().equals(caller))
+                .noneMatch(a -> "CONFIGURED".equals(a.semanticQualifiers().get("optimisticLock"))));
+    }
+
     private io.graphcrud.application.JavaAnalysisResult analyze(Optional<String> databaseId, List<io.graphcrud.model.CanonicalFact> facts) {
         var migrationRoot = root.resolve("db/migration");
         var schemaSources = Files.exists(migrationRoot)
@@ -218,6 +414,27 @@ class MyBatisPostgreSqlProjectAnalyzerContractTest {
                 .anyMatch(a -> result.facts().stream().filter(EvidenceOccurrence.class::isInstance)
                         .map(EvidenceOccurrence.class::cast)
                         .anyMatch(e -> e.subject().equals(a.id()) && e.evidenceLevel() == level));
+    }
+
+    private static boolean hasCrudFrom(io.graphcrud.application.JavaAnalysisResult result, NodeId source,
+            RelationshipType type, String table, EvidenceLevel level) {
+        return result.facts().stream().filter(RelationshipAssertion.class::isInstance)
+                .map(RelationshipAssertion.class::cast)
+                .filter(a -> a.source().equals(source) && a.type() == type
+                        && table.equals(a.target().identityParts().get("name")))
+                .anyMatch(a -> result.facts().stream().filter(EvidenceOccurrence.class::isInstance)
+                        .map(EvidenceOccurrence.class::cast)
+                        .anyMatch(e -> e.subject().equals(a.id()) && e.evidenceLevel() == level));
+    }
+
+    private static EvidenceOccurrence unresolved(NodeId caller, int line, String raw) {
+        return unresolvedAt(caller, line, "src/main/java/com/acme/OrderService.java", raw);
+    }
+
+    private static EvidenceOccurrence unresolvedAt(NodeId caller, int line, String path, String raw) {
+        return EvidenceOccurrence.of(caller, new SnapshotId("stage-3-project"), "eclipse-jdt",
+                new io.graphcrud.model.SourceAnchor(path, line, 5),
+                EvidenceLevel.UNRESOLVED, "JAVA_DEPENDENCY_MISSING: raw=" + raw + " candidates=[]");
     }
 
     private void write(String relative, String content) throws Exception {
