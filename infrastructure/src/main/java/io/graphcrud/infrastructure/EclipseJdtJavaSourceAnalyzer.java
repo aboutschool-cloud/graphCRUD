@@ -282,7 +282,7 @@ public final class EclipseJdtJavaSourceAnalyzer implements JavaSourceAnalyzer {
                     input.projectId().value(),
                     input.buildMetadata().moduleName(),
                     "java",
-                    binding.getDeclaringClass().getQualifiedName(),
+                    declaringTypeName(binding.getDeclaringClass()),
                     binding.getName(),
                     descriptor(binding));
             sourceMethods.add(binding.getMethodDeclaration());
@@ -1270,7 +1270,7 @@ public final class EclipseJdtJavaSourceAnalyzer implements JavaSourceAnalyzer {
                     input.projectId().value(),
                     input.buildMetadata().moduleName(),
                     "java",
-                    binding.getDeclaringClass().getQualifiedName(),
+                    declaringTypeName(binding.getDeclaringClass()),
                     binding.getName(),
                     descriptor(binding));
         }
@@ -1278,6 +1278,15 @@ public final class EclipseJdtJavaSourceAnalyzer implements JavaSourceAnalyzer {
         private static boolean isConfirmed(IMethodBinding binding) {
             return binding != null && !binding.isRecovered() && binding.getDeclaringClass() != null
                     && !binding.getDeclaringClass().isRecovered();
+        }
+
+        private static String declaringTypeName(ITypeBinding type) {
+            var erased = type.getErasure();
+            var name = erased.getQualifiedName();
+            if (name == null || name.isBlank()) name = erased.getBinaryName();
+            if (name == null || name.isBlank()) name = erased.getKey();
+            if (name == null || name.isBlank()) throw new IllegalArgumentException("resolved method has no declaring type identity");
+            return name;
         }
 
         private static boolean isConfirmed(ITypeBinding binding) {

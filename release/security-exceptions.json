@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "1",
+  "evaluatedAt": "2026-08-08T06:00:00Z",
+  "exceptions": [
+    {
+      "id": "CVE-2026-11352",
+      "owner": "GraphCRUD release owner",
+      "reason": "No vendor fix is available; GraphCRUD does not use curl QUIC and the runtime container exposes no curl-driven service.",
+      "expiresAt": "2026-08-16T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-11586",
+      "owner": "GraphCRUD release owner",
+      "reason": "No vendor fix is available; GraphCRUD does not use curl WebSocket support and the runtime container exposes no curl-driven service.",
+      "expiresAt": "2026-08-16T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-22020",
+      "owner": "GraphCRUD release owner",
+      "reason": "No vendor fix is available; retain as a time-bounded base-image exception and reassess on the next UBI or Temurin refresh.",
+      "expiresAt": "2026-08-16T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-8286",
+      "owner": "GraphCRUD release owner",
+      "reason": "No vendor fix is available; GraphCRUD does not use curl to establish application TLS connections.",
+      "expiresAt": "2026-08-16T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-8925",
+      "owner": "GraphCRUD release owner",
+      "reason": "No vendor fix is available; GraphCRUD does not use curl SASL authentication.",
+      "expiresAt": "2026-08-16T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-9547",
+      "owner": "GraphCRUD release owner",
+      "reason": "No vendor fix is available; GraphCRUD does not use curl SSH transport.",
+      "expiresAt": "2026-08-16T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-54512",
+      "owner": "GraphCRUD release owner",
+      "reason": "Jackson 2.21.4 is fixed but no Neo4j 5.26 image containing it is published. Neo4j was upgraded to 5.26.29; ports remain loopback-only, authentication is mandatory, and GraphCRUD sends Bolt protocol messages rather than polymorphic JSON. Replace the image when Neo4j publishes the fix.",
+      "expiresAt": "2026-08-16T00:00:00Z"
+    },
+    {
+      "id": "CVE-2026-54513",
+      "owner": "GraphCRUD release owner",
+      "reason": "Jackson 2.21.4 is fixed but no Neo4j 5.26 image containing it is published. Neo4j was upgraded to 5.26.29; ports remain loopback-only, authentication is mandatory, and GraphCRUD sends Bolt protocol messages rather than polymorphic JSON. Replace the image when Neo4j publishes the fix.",
+      "expiresAt": "2026-08-16T00:00:00Z"
+    },
+    {
+      "id": "GHSA-r7wm-3cxj-wff9",
+      "owner": "GraphCRUD release owner",
+      "reason": "Jackson-core 2.21.4 is fixed but no Neo4j 5.26 image containing it is published. Neo4j was upgraded to 5.26.29; ports remain loopback-only, authentication is mandatory, and GraphCRUD sends Bolt protocol messages. Replace the image when Neo4j publishes the fix.",
+      "expiresAt": "2026-08-16T00:00:00Z"
+    }
+  ]
+}

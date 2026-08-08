@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "1",
+  "policy": "compatibility-non-crash-only",
+  "corpora": [
+    {
+      "role": "mybatis-spring-control",
+      "repository": "https://github.com/mybatis/spring-boot-starter.git",
+      "release": "mybatis-spring-boot-4.1.0",
+      "commit": "5f1d7e3e01054a663cd1ae8b37141fe88c015f58",
+      "analysisPath": "mybatis-spring-boot-samples/mybatis-spring-boot-sample-xml",
+      "license": "Apache-2.0",
+      "accuracyOracle": false
+    },
+    {
+      "role": "traditional-application-control",
+      "repository": "https://github.com/mybatis/jpetstore-6.git",
+      "release": "jpetstore-6.3.0",
+      "commit": "ce8015be2c2658d0b657be20328e53045f3a9641",
+      "analysisPath": ".",
+      "license": "Apache-2.0",
+      "accuracyOracle": false
+    },
+    {
+      "role": "postgresql-complexity-smoke",
+      "repository": "https://github.com/dromara/RuoYi-Vue-Plus.git",
+      "release": "v5.6.1",
+      "commit": "6bfdcae06eaf218c4204382de277499be6c88c1b",
+      "analysisPath": "ruoyi-modules/ruoyi-system",
+      "license": "MIT",
+      "accuracyOracle": false
+    },
+    {
+      "role": "gradle-sentinel",
+      "repository": "https://github.com/baomidou/mybatis-plus.git",
+      "release": "v3.5.17",
+      "commit": "db0b3c4bb58a38bad9c3d78b7269d8a477cc6a63",
+      "analysisPath": "mybatis-plus-spring",
+      "license": "Apache-2.0",
+      "accuracyOracle": false
+    }
+  ]
+}

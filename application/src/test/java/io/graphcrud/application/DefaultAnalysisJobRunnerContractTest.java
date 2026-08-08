@@ -98,6 +98,16 @@ class DefaultAnalysisJobRunnerContractTest {
         assertEquals(AnalysisJobState.RECONCILIATION_REQUIRED, result.state());
     }
 
+    @Test
+    void reports_graph_write_and_seal_timing_after_successful_commit() {
+        var store = new RecordingStore();
+        var timing = new long[] {-1};
+        var result = new DefaultAnalysisJobRunner(store, value -> timing[0] = value)
+                .run(request(SnapshotCompletion.COMPLETE), CancellationToken.NEVER);
+        assertEquals(AnalysisJobState.SUCCEEDED, result.state());
+        assertTrue(timing[0] >= 0);
+    }
+
     private static AnalysisJobRequest request(SnapshotCompletion completion) {
         var facts = List.of(node("a"), node("b"), node("c"));
         return new AnalysisJobRequest(new ProjectId("orders"), new SnapshotId("next"),

@@ -67,6 +67,29 @@ class EclipseJdtJavaSourceAnalyzerContractTest {
     }
 
     @Test
+    void anonymous_class_methods_have_stable_non_blank_code_symbol_identity() throws Exception {
+        var sourceRoot = projectRoot.resolve("src/main/java");
+        writeJava(sourceRoot.resolve("com/acme/Worker.java"), """
+                package com.acme;
+                public class Worker {
+                    Runnable first() { return new Runnable() { public void run() {} }; }
+                    Runnable second() { return new Runnable() { public void run() {} }; }
+                }
+                """);
+        JavaSourceAnalyzer analyzer = new EclipseJdtJavaSourceAnalyzer();
+        var input = new JavaAnalysisInput(new ProjectId("orders"), new SnapshotId("anonymous"), projectRoot,
+                new JavaBuildMetadata("app", Map.of(sourceRoot, StandardCharsets.UTF_8), List.of(), true));
+
+        var first = analyzer.analyze(input).facts();
+        var second = analyzer.analyze(input).facts();
+        assertEquals(first, second);
+        var anonymousRunIds = first.stream().filter(NodeFact.class::isInstance).map(NodeFact.class::cast)
+                .filter(fact -> "run".equals(fact.properties().get("displayName")))
+                .map(NodeFact::id).distinct().toList();
+        assertEquals(2, anonymousRunIds.size());
+    }
+
+    @Test
     void symbolic_link_escape_is_not_analyzed(@TempDir Path outsideRoot) throws Exception {
         var sourceRoot = projectRoot.resolve("src/main/java");
         Files.createDirectories(sourceRoot);

@@ -5,9 +5,15 @@ import java.util.ArrayList;
 /** Executes one bounded, synchronous analysis ingestion job through a GraphStore. */
 public final class DefaultAnalysisJobRunner implements AnalysisJobRunner {
     private final GraphStore store;
+    private final java.util.function.LongConsumer graphWriteTiming;
 
     public DefaultAnalysisJobRunner(GraphStore store) {
+        this(store, ignored -> {});
+    }
+
+    public DefaultAnalysisJobRunner(GraphStore store, java.util.function.LongConsumer graphWriteTiming) {
         this.store = store;
+        this.graphWriteTiming = java.util.Objects.requireNonNull(graphWriteTiming);
         store.capabilities().requireStageOne();
     }
 
@@ -30,6 +36,7 @@ public final class DefaultAnalysisJobRunner implements AnalysisJobRunner {
             }
             progress.add(new AnalysisProgress(AnalysisJobState.RUNNING, 0, "Analysis job started."));
             var analysis = request.analysis().analyze(cancellationToken);
+            var graphWriteStarted = System.nanoTime();
             if (cancellationToken.isCancellationRequested()) {
                 return cancelBeforeStaging(progress);
             }
@@ -50,6 +57,8 @@ public final class DefaultAnalysisJobRunner implements AnalysisJobRunner {
             }
             sealing = true;
             store.sealSnapshot(request.snapshotId(), analysis.completion());
+            graphWriteTiming.accept(java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(
+                    System.nanoTime() - graphWriteStarted));
             staging = false;
             var finalState = analysis.completion() == SnapshotCompletion.COMPLETE
                     ? AnalysisJobState.SUCCEEDED : AnalysisJobState.PARTIAL;

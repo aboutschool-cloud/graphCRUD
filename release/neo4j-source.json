@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "1",
+  "component": "Neo4j Community",
+  "version": "5.26.29",
+  "repository": "https://github.com/neo4j/neo4j.git",
+  "tag": "5.26.29",
+  "tagObject": "0b661c31734ceca428d72a6fe80ccd793b0cbca8",
+  "commit": "e1d373ea096b22961d1b944d9aaa85f999764c02",
+  "license": "GPL-3.0-only",
+  "archive": "sources/neo4j-5.26.29-corresponding-source.zip",
+  "upstreamImage": "neo4j:5.26.29-community-ubi10@sha256:1a04b5441194aef79413ba0baad4a8ff9365f5cdd8ab77be40ec364e6c6f1aeb",
+  "deliveryImage": "graphcrud/neo4j-community:5.26.29-sanitized@sha256:61715f2b21db10790eaa0cad61470a5c44001907fe2c86ff6deec5997db51edf",
+  "aggregateChange": "Removed the separately licensed neo4j-fleet-management-plugin-1.2.0-v5.jar; no GPL source or binary was modified."
+}

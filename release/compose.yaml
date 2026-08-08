@@ -1,0 +1,52 @@
+name: graphcrud
+
+x-graphcrud-connection: &graphcrud-connection
+  GRAPHCRUD_BOLT_URI: ${GRAPHCRUD_BOLT_URI:-bolt://neo4j:7687}
+
+services:
+  graphcrud:
+    image: graphcrud:0.1.0@sha256:f9040ea692b1d0f3896d02aa04729fa4693d7627aba8816a2696bc54bfe0f604
+    pull_policy: never
+    profiles: ["cli"]
+    environment:
+      GRAPHCRUD_BOLT_URI: ${GRAPHCRUD_BOLT_URI:-bolt://neo4j:7687}
+      GRAPHCRUD_BOLT_USER: neo4j
+      GRAPHCRUD_BOLT_PASSWORD: ${GRAPHCRUD_BOLT_PASSWORD:?set GRAPHCRUD_BOLT_PASSWORD}
+      GRAPHCRUD_SOURCE_ROOT: /workspace
+    volumes:
+      - ${GRAPHCRUD_SOURCE_ROOT:?set GRAPHCRUD_SOURCE_ROOT}:/workspace:ro
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    mem_limit: 2g
+    cpus: 2.0
+
+  neo4j:
+    image: graphcrud/neo4j-community:5.26.29-sanitized@sha256:61715f2b21db10790eaa0cad61470a5c44001907fe2c86ff6deec5997db51edf
+    pull_policy: never
+    environment:
+      NEO4J_AUTH: ${NEO4J_AUTH:?set NEO4J_AUTH to neo4j/strong-password}
+      NEO4J_dbms_usage__report_enabled: "false"
+    ports:
+      - "127.0.0.1:7474:7474"
+      - "127.0.0.1:7687:7687"
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+      - ${GRAPHCRUD_SOURCE_ROOT:?set GRAPHCRUD_SOURCE_ROOT}:/workspace:ro
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p \"$${NEO4J_AUTH#*/}\" 'RETURN 1' >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      start_period: 90s
+      retries: 30
+    restart: unless-stopped
+    mem_limit: 4g
+    cpus: 4.0
+
+volumes:
+  neo4j-data:
+  neo4j-logs:
