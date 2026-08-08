@@ -1,0 +1,119 @@
+﻿{
+    "schemaVersion":  "1",
+    "evaluatedAt":  "2026-08-08T08:37:30.7098208Z",
+    "environment":  {
+                        "id":  "docker-linux-x86_64-7b62ea82b1f32978",
+                        "hostCpuCount":  8,
+                        "hostMemoryGiB":  7.68,
+                        "dockerServerVersion":  "29.6.2",
+                        "dockerOperatingSystem":  "Docker Desktop",
+                        "graphcrudCpuLimit":  2,
+                        "graphcrudMemoryGiB":  2,
+                        "jdk":  "Eclipse Temurin 21",
+                        "graphcrudImage":  "sha256:f9040ea692b1d0f3896d02aa04729fa4693d7627aba8816a2696bc54bfe0f604"
+                    },
+    "policy":  {
+                   "purpose":  "compatibility-and-non-crash-only",
+                   "accuracyOracle":  false,
+                   "warmup":  "one successful purge-project Bolt invocation before each timed analysis",
+                   "sampleCount":  1,
+                   "regressionThresholdPercent":  20,
+                   "comparisonRequiresSameEnvironmentId":  true,
+                   "maximumRunDurationSeconds":  600
+               },
+    "runs":  [
+                 {
+                     "role":  "mybatis-spring-control",
+                     "commit":  "5f1d7e3e01054a663cd1ae8b37141fe88c015f58",
+                     "analysisPath":  "mybatis-spring-boot-samples/mybatis-spring-boot-sample-xml",
+                     "exitCode":  0,
+                     "command":  "graphcrud analyze mybatis-spring-control-release stage6-mybatis-spring-control-release /workspace",
+                     "analyzerVersion":  "graphcrud-0.1.0",
+                     "jdk":  "Eclipse Temurin 21",
+                     "startedAt":  "2026-08-08T08:32:50.2886074Z",
+                     "maximumDurationSeconds":  600,
+                     "state":  "PARTIAL",
+                     "coverageComplete":  false,
+                     "elapsedMs":  11418,
+                     "stageTimingsMs":  {
+                                            "discovery":  872,
+                                            "parsing":  3212,
+                                            "resolution":  1097,
+                                            "graphWrite":  1849,
+                                            "query":  4219
+                                        },
+                     "semanticSha256":  "d49e31574b2abd39a2f87f6c0520f02d663cc165b5a28f2115d842d92dc3ef9a",
+                     "accuracyOracle":  false
+                 },
+                 {
+                     "role":  "traditional-application-control",
+                     "commit":  "ce8015be2c2658d0b657be20328e53045f3a9641",
+                     "analysisPath":  ".",
+                     "exitCode":  0,
+                     "command":  "graphcrud analyze traditional-application-control-release stage6-traditional-application-control-release /workspace",
+                     "analyzerVersion":  "graphcrud-0.1.0",
+                     "jdk":  "Eclipse Temurin 21",
+                     "startedAt":  "2026-08-08T08:34:01.8183876Z",
+                     "maximumDurationSeconds":  600,
+                     "state":  "PARTIAL",
+                     "coverageComplete":  false,
+                     "elapsedMs":  20567,
+                     "stageTimingsMs":  {
+                                            "discovery":  3512,
+                                            "parsing":  4713,
+                                            "resolution":  3316,
+                                            "graphWrite":  3452,
+                                            "query":  7216
+                                        },
+                     "semanticSha256":  "0c0df3b550310d28bdae03507fa19c20128154ec7f109d487d19117f676c9e6d",
+                     "accuracyOracle":  false
+                 },
+                 {
+                     "role":  "postgresql-complexity-smoke",
+                     "commit":  "6bfdcae06eaf218c4204382de277499be6c88c1b",
+                     "analysisPath":  "ruoyi-modules/ruoyi-system",
+                     "exitCode":  0,
+                     "command":  "graphcrud analyze postgresql-complexity-smoke-release stage6-postgresql-complexity-smoke-release /workspace",
+                     "analyzerVersion":  "graphcrud-0.1.0",
+                     "jdk":  "Eclipse Temurin 21",
+                     "startedAt":  "2026-08-08T08:35:24.5292015Z",
+                     "maximumDurationSeconds":  600,
+                     "state":  "PARTIAL",
+                     "coverageComplete":  false,
+                     "elapsedMs":  38170,
+                     "stageTimingsMs":  {
+                                            "discovery":  2526,
+                                            "parsing":  18341,
+                                            "resolution":  2086,
+                                            "graphWrite":  7112,
+                                            "query":  7023
+                                        },
+                     "semanticSha256":  "a847d6e43a4bc03bcffcf9ffb1ca2df4abc9290136d1d14c02993bdad84fd06d",
+                     "accuracyOracle":  false
+                 },
+                 {
+                     "role":  "gradle-sentinel",
+                     "commit":  "db0b3c4bb58a38bad9c3d78b7269d8a477cc6a63",
+                     "analysisPath":  "mybatis-plus-spring",
+                     "exitCode":  0,
+                     "command":  "graphcrud analyze gradle-sentinel-release stage6-gradle-sentinel-release /workspace",
+                     "analyzerVersion":  "graphcrud-0.1.0",
+                     "jdk":  "Eclipse Temurin 21",
+                     "startedAt":  "2026-08-08T08:37:06.5272225Z",
+                     "maximumDurationSeconds":  600,
+                     "state":  "PARTIAL",
+                     "coverageComplete":  false,
+                     "elapsedMs":  12136,
+                     "stageTimingsMs":  {
+                                            "discovery":  1094,
+                                            "parsing":  4085,
+                                            "resolution":  321,
+                                            "graphWrite":  1804,
+                                            "query":  6230
+                                        },
+                     "semanticSha256":  "4bdd33e98fc91e39dac70f0ae75c5147a090bd071245b30841f14292328514cb",
+                     "accuracyOracle":  false
+                 }
+             ],
+    "interpretation":  "PARTIAL records missing build classpaths as bounded coverage degradation. Each semantic hash was verified by two consecutive exports of the same sealed snapshot."
+}

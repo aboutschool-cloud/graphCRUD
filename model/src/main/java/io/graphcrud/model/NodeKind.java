@@ -1,0 +1,19 @@
+package io.graphcrud.model;
+
+public enum NodeKind {
+    INVOCATION_SOURCE,
+    INVOCATION_BINDING,
+    HTTP_ENDPOINT_BINDING,
+    CONFIGURATION_ENTRY,
+    JAVA_TYPE,
+    UI_ACTION,
+    SOURCE_FILE,
+    CODE_SYMBOL,
+    SQL_STATEMENT,
+    DATABASE_SOURCE,
+    SCHEMA,
+    TABLE,
+    VIEW,
+    DATABASE_ROUTINE,
+    TRIGGER
+}

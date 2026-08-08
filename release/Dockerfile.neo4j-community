@@ -1,0 +1,18 @@
+FROM scratch
+
+# Generated from the merged upstream Community filesystem by prepare-neo4j-rootfs.ps1.
+# The normalized single layer never contains the separately licensed fleet-management JAR.
+ADD build/stage6/neo4j-rootfs/normalized.tar /
+
+ENV PATH=/var/lib/neo4j/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    container=oci \
+    NEO4J_SHA256=a45ca9644100d995500f7ea7f5bb4874e16e588891fdfbdff65d21321331caa2 \
+    NEO4J_TARBALL=neo4j-community-5.26.29-unix.tar.gz \
+    NEO4J_EDITION=community \
+    NEO4J_HOME=/var/lib/neo4j \
+    LANG=C.UTF-8
+WORKDIR /var/lib/neo4j
+EXPOSE 7473 7474 7687
+VOLUME ["/data", "/logs"]
+ENTRYPOINT ["tini", "-g", "--", "/startup/docker-entrypoint.sh"]
+CMD ["neo4j"]

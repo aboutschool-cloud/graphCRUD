@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "1",
+  "tools": [
+    {
+      "name": "syft",
+      "version": "1.50.0",
+      "gitCommit": "16223e6dd7893fe578787658ceb876257483d404",
+      "asset": "syft_1.50.0_windows_amd64.zip",
+      "sha256": "815ee6973ec5dff6a671d7f41b0e78835a8c45b91d5a39f4743ea1cee833d3be",
+      "license": "Apache-2.0"
+    },
+    {
+      "name": "trivy",
+      "version": "0.72.0",
+      "asset": "trivy_0.72.0_windows-64bit.zip",
+      "sha256": "ed3cf122060f61818fe1f735fd97557954e16e10bc8b058af9852271cf2e91b3",
+      "license": "Apache-2.0"
+    }
+  ],
+  "policy": {
+    "maximumDatabaseAgeHours": 72,
+    "failSeverities": ["CRITICAL", "HIGH"],
+    "exceptionsRequire": ["id", "owner", "reason", "expiresAt"]
+  }
+}
