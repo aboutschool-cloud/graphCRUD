@@ -30,7 +30,8 @@ public final class GraphCrudCli {
                         ? operations.status(project, new SnapshotId(args[2])) : operations.status(project)));
                 case "table-impact" -> {
                     if (args.length < 5) yield new CliResult(2, "", "table-impact requires database schema table [depth paths] [snapshot]\n");
-                    var table = NodeId.of(NodeKind.TABLE, Map.of("databaseSource", args[2], "schema", args[3], "name", args[4]));
+                    var table = NodeId.of(NodeKind.TABLE, Map.of("project", project.value(),
+                            "databaseSource", args[2], "schema", args[3], "name", args[4]));
                     var bounds = args.length > 6 ? new QueryBounds(Integer.parseInt(args[5]), Integer.parseInt(args[6])) : QueryBounds.defaults();
                     var selected = args.length > 7 && !args[7].equals("-") ? new SnapshotId(args[7]) : null;
                     yield ok(DeliveryJson.impact(operations.tableImpact(project, selected, table,
@@ -46,8 +47,13 @@ public final class GraphCrudCli {
                 case "report" -> {
                     var html = java.util.Arrays.asList(args).contains("html");
                     if (args.length >= 6 && args[2].equals("table-impact")) {
-                        var table = NodeId.of(NodeKind.TABLE, Map.of("databaseSource", args[3], "schema", args[4], "name", args[5]));
-                        yield report(operations.tableImpact(project, null, table, QueryBounds.defaults()), html);
+                        var table = NodeId.of(NodeKind.TABLE, Map.of("project", project.value(),
+                                "databaseSource", args[3], "schema", args[4], "name", args[5]));
+                        var bounds = args.length > 7 ? new QueryBounds(
+                                Integer.parseInt(args[6]), Integer.parseInt(args[7])) : QueryBounds.defaults();
+                        var selected = args.length > 8 && !args[8].equals("-") && !args[8].equals("html")
+                                ? new SnapshotId(args[8]) : null;
+                        yield report(operations.tableImpact(project, selected, table, bounds), html);
                     }
                     yield report(operations.status(project), html);
                 }

@@ -49,6 +49,40 @@ class DeliveryAdaptersContractTest {
     }
 
     @Test
+    void impact_html_visualizes_crud_summary_and_evidenced_call_chains_without_external_assets() {
+        var entry = NodeId.of(NodeKind.INVOCATION_SOURCE, Map.of("project", "p", "kind", "http", "route", "POST /orders"));
+        var method = NodeId.javaMethod("p", "m", "java", "Orders", "create", "()V");
+        var sql = NodeId.of(NodeKind.SQL_STATEMENT, Map.of("project", "p", "sql", "insert into orders"));
+        var table = NodeId.of(NodeKind.TABLE, Map.of("databaseSource", "main", "schema", "public", "name", "orders"));
+        var response = new ImpactResponse("v1", new SnapshotId("s-visual"), SnapshotCompletion.PARTIAL,
+                List.of(
+                        new ImpactPath(CrudOperation.INSERTS, List.of(entry, method, sql, table), List.of(
+                                new EvidenceOccurrenceId("route-evidence"), new EvidenceOccurrenceId("call-evidence"),
+                                new EvidenceOccurrenceId("crud-evidence"))),
+                        new ImpactPath(CrudOperation.INSERTS, List.of(entry, method, sql, table), List.of(
+                                new EvidenceOccurrenceId("route-evidence-2"), new EvidenceOccurrenceId("call-evidence-2"),
+                                new EvidenceOccurrenceId("crud-evidence-2")))), true,
+                new QueryBounds(8, 500), new Coverage(false, List.of("Orders.java"), List.of("missing dependency")),
+                List.of(new DeliveryWarning("PARTIAL_COVERAGE", "Relevant source is unresolved.")));
+
+        var html = LocalReport.html(response);
+
+        assertTrue(html.contains("<svg"));
+        assertTrue(html.contains("CRUD overview"));
+        assertTrue(html.contains("data-operation=\"INSERTS\""));
+        assertTrue(html.contains("POST /orders"));
+        assertTrue(html.contains("Orders.create()V"));
+        assertTrue(html.contains("route-evidence"));
+        assertTrue(html.contains("route-evidence-2"));
+        assertTrue(html.contains(entry.canonicalValue().replace("&", "&amp;")));
+        assertEquals(html.indexOf("class=\"chain\""), html.lastIndexOf("class=\"chain\""));
+        assertTrue(html.contains("Partial coverage"));
+        assertTrue(html.contains("Results truncated"));
+        assertFalse(html.contains("https://"));
+        assertFalse(html.contains("<pre>{"));
+    }
+
+    @Test
     void support_bundle_is_deterministic_and_redacts_forbidden_customer_data() {
         var input = Map.of("error", "password=hunter2 at C:\\customers\\orders.sql SELECT * FROM secret_table",
                 "project", "orders", "count", "12");
@@ -106,6 +140,19 @@ class DeliveryAdaptersContractTest {
     }
 
     @Test
+    void cli_visual_report_accepts_bounds_and_snapshot_for_repeatable_call_chain_views() {
+        var operations = new FakeOperations();
+        var cli = new GraphCrudCli(operations);
+        var result = cli.execute("report", "orders", "table-impact", "main", "public", "orders",
+                "4", "20", "s-reviewed", "html");
+
+        assertEquals(0, result.exitCode());
+        assertTrue(result.stdout().contains("CRUD call chains"));
+        assertTrue(result.stdout().contains("Depth &le; 4 &middot; paths &le; 20"));
+        assertEquals("orders", operations.lastTable.identityParts().get("project"));
+    }
+
+    @Test
     void local_http_listener_exposes_versioned_routes_and_no_store_responses() throws Exception {
         try (var server = new GraphCrudHttpServer(new InetSocketAddress("127.0.0.1", 0), new FakeOperations(),
                 (project, query, body) -> new AnalysisJobRequest(project, new SnapshotId(query.get("snapshot")),
@@ -127,10 +174,19 @@ class DeliveryAdaptersContractTest {
             var reportRequest = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + server.port()
                     + "/api/v1/projects/orders/report?format=html")).GET().build();
             assertEquals(200, HttpClient.newHttpClient().send(reportRequest, HttpResponse.BodyHandlers.ofString()).statusCode());
+            var impactReportRequest = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + server.port()
+                    + "/api/v1/projects/orders/report?format=html&database=main&schema=public&table=orders"
+                    + "&depth=4&paths=20&snapshot=s-1")).GET().build();
+            var impactReport = HttpClient.newHttpClient().send(impactReportRequest, HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, impactReport.statusCode());
+            assertTrue(impactReport.headers().firstValue("content-type").orElseThrow().startsWith("text/html"));
+            assertTrue(impactReport.body().contains("CRUD call chains"));
+            assertTrue(impactReport.body().contains("Not truncated") || impactReport.body().contains("Results truncated"));
         }
     }
 
     private static final class FakeOperations implements DeliveryOperations {
+        private NodeId lastTable;
         private StatusResponse status() { return new StatusResponse("v1", new ProjectId("orders"), DeliveryStatus.PARTIAL,
                 new SnapshotId("s-1"), Coverage.forCompletion(SnapshotCompletion.PARTIAL)); }
         @Override public AnalyzeResponse analyze(AnalysisJobRequest request, CancellationToken token) {
@@ -143,8 +199,10 @@ class DeliveryAdaptersContractTest {
         @Override public StatusResponse status(ProjectId projectId) { return status(); }
         @Override public StatusResponse status(ProjectId projectId, SnapshotId snapshotId) { return status(); }
         @Override public ImpactResponse tableImpact(ProjectId projectId, SnapshotId snapshotId, NodeId tableId, QueryBounds bounds) {
+            lastTable = tableId;
             return new ImpactResponse("v1", new SnapshotId("s-1"), SnapshotCompletion.PARTIAL, List.of(), true,
-                    Coverage.forCompletion(SnapshotCompletion.PARTIAL), List.of(new DeliveryWarning("PARTIAL_COVERAGE", "partial")));
+                    bounds, Coverage.forCompletion(SnapshotCompletion.PARTIAL),
+                    List.of(new DeliveryWarning("PARTIAL_COVERAGE", "partial")));
         }
         @Override public OperationResponse promotePartial(ProjectId projectId, SnapshotId snapshotId) { return new OperationResponse("v1", projectId, snapshotId, 0); }
         @Override public ExportResponse export(ProjectId projectId, SnapshotId snapshotId) { return new ExportResponse("v1", new SnapshotId("s-1"), "facts\n".getBytes(StandardCharsets.UTF_8)); }

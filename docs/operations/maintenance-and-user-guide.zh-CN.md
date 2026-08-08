@@ -205,7 +205,25 @@ $GC promote-partial <project> <snapshot>
 
 未经审批不得自动晋升 PARTIAL snapshot。
 
-### 8.4 查询表影响
+### 8.4 生成 CRUD 调用链图形报告
+
+图形报告是单个自包含 HTML 文件，不加载 CDN、字体或远程脚本。报告按 READ、CREATE、UPDATE、DELETE 汇总路径，并用 SVG 展示 Code Entrypoint、代码方法、SQL 与表之间的有证据调用链。每条边可展开查看 Evidence Occurrence ID；PARTIAL coverage、查询上限和截断状态始终显示。
+
+```powershell
+$GC report <project> table-impact <database-source> <schema> <table> <depth> <paths> <snapshot> html `
+  > table-crud-call-chain.html
+```
+
+例如：
+
+```powershell
+$GC report financial-trading-system table-impact default public t_trade_order 8 500 git-edadb061-mp5 html `
+  > t_trade_order-crud-call-chain.html
+```
+
+使用浏览器打开生成文件即可筛选 CRUD 类型和检查调用链。报告只展示所选 snapshot 的有界查询结果；出现 `Results truncated` 时应提高边界后重新生成，不能把当前视图解释为完整结果。PARTIAL snapshot 的图形展示不构成自动晋升或生产准确性声明。
+
+### 8.5 查询表影响
 
 ```bash
 $GC table-impact <project> <database-source> <schema> <table> <depth> <paths> <snapshot>
@@ -219,7 +237,7 @@ $GC table-impact billing default public invoice 3 100 release-2026-08
 
 `depth` 和 `paths` 是查询边界；生产自动化必须设置合理上限，避免无界查询。结果是静态、证据驱动的代码知识，不是运行时访问日志。
 
-### 8.5 导出
+### 8.6 导出
 
 ```bash
 $GC export <project> <snapshot> > approved-export.jsonl
@@ -227,7 +245,7 @@ $GC export <project> <snapshot> > approved-export.jsonl
 
 导出可能包含文件路径、标识符、SQL 和数据库对象名，应按客户机密数据处理。传输前需要审批和加密。
 
-### 8.6 生成报告
+### 8.7 生成报告
 
 状态报告：
 
@@ -243,7 +261,7 @@ $GC report <project> table-impact <database-source> <schema> <table> > impact-re
 $GC report <project> table-impact <database-source> <schema> <table> html > impact-report.html
 ```
 
-### 8.7 生成支持包
+### 8.8 生成支持包
 
 ```bash
 $GC support-bundle <project> '<approved-redacted-diagnostic>' > support-bundle.zip
@@ -251,7 +269,7 @@ $GC support-bundle <project> '<approved-redacted-diagnostic>' > support-bundle.z
 
 第二个参数是已脱敏的诊断文本，不是输出路径。生成后必须人工检查，不得包含密码、token、客户源码、原始数据库卷或未经审查的完整导出。
 
-### 8.8 清理项目
+### 8.9 清理项目
 
 ```bash
 $GC purge-project <project>

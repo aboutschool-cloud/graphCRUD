@@ -56,7 +56,7 @@ public final class GraphCrudHttpServer implements AutoCloseable {
                 case "POST promote" -> api.promote(project, requiredSnapshot(snapshot));
                 case "GET report" -> query.containsKey("table")
                         ? api.report(operations.tableImpact(project, snapshot,
-                                NodeId.of(NodeKind.TABLE, Map.of("databaseSource", required(query, "database"),
+                                NodeId.of(NodeKind.TABLE, Map.of("project", project.value(), "databaseSource", required(query, "database"),
                                         "schema", required(query, "schema"), "name", required(query, "table"))),
                                 query.containsKey("depth") || query.containsKey("paths")
                                         ? new QueryBounds(Integer.parseInt(required(query, "depth")), Integer.parseInt(required(query, "paths")))
@@ -66,7 +66,7 @@ public final class GraphCrudHttpServer implements AutoCloseable {
                 case "POST support-bundle" -> api.supportBundle(Map.of("diagnostic",
                         new String(body, StandardCharsets.UTF_8)));
                 case "GET table-impact" -> api.impact(project, snapshot,
-                        NodeId.of(NodeKind.TABLE, Map.of("databaseSource", required(query, "database"),
+                        NodeId.of(NodeKind.TABLE, Map.of("project", project.value(), "databaseSource", required(query, "database"),
                                 "schema", required(query, "schema"), "name", required(query, "table"))),
                         query.containsKey("depth") || query.containsKey("paths")
                                 ? new QueryBounds(Integer.parseInt(required(query, "depth")), Integer.parseInt(required(query, "paths")))
