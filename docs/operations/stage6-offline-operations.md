@@ -1,5 +1,7 @@
 # Stage 6 offline installation and operations
 
+面向客户操作员的详细中文使用、巡检、备份恢复、升级回滚、安全合规和后续保守说明，见 [`maintenance-and-user-guide.zh-CN.md`](maintenance-and-user-guide.zh-CN.md)。本文继续作为发行门禁使用的精简英文操作基线。
+
 ## Supported installation shape
 
 The package targets Linux x86_64 containers, including Docker Desktop with WSL2. It contains the GraphCRUD image, a native Java 21 ZIP, and an optional Neo4j Community image. From the extracted bundle root, use `-f compose/compose.yaml` for the bundled graph database or `-f compose/compose-external.yaml` with `GRAPHCRUD_BOLT_URI`, user, and password for a customer-managed compatible graph database.
